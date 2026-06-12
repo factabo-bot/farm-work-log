@@ -29,8 +29,11 @@ async function init() {
       } else if (liff.isInClient()) {
         liff.login();
         return;
+      } else {
+        // LINE外のブラウザ（ホーム画面ショートカット等）。
+        // ログインすれば本人の名前で記録できるようにボタンを出す
+        showLoginButton();
       }
-      // LINE外のブラウザで未ログインの場合は「テスト利用者」のまま動かす
     } catch (err) {
       console.warn("LIFF初期化に失敗。テスト利用者として続行します", err);
     }
@@ -56,6 +59,14 @@ async function init() {
     }
   });
   $("submit").addEventListener("click", submitAll);
+}
+
+// LINE外ブラウザ用のログインボタン（1回ログインすれば以降は自動で名前が入る）
+function showLoginButton() {
+  const btn = el("button", "btn-primary", "LINEでログインして自分の名前で記録する");
+  btn.style.marginBottom = "4px";
+  btn.addEventListener("click", () => liff.login());
+  document.querySelector("main").prepend(btn);
 }
 
 // ---------- マスタ参照 ----------
