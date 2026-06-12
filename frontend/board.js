@@ -316,8 +316,8 @@ function renderGrid() {
     }
   }
 
-  // 左端に上から下まで通しの「入口」ブロック
-  const outer = el("div", "bar-wrap");
+  // 左端に上から下まで通しの「入口」ブロック。進捗ボードは上下圧縮表示（compact）
+  const outer = el("div", "bar-wrap compact");
   outer.appendChild(el("div", "entrance-block", "入口"));
   outer.appendChild(wrap);
   area.appendChild(outer);

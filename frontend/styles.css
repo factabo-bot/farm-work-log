@@ -129,6 +129,29 @@ h2 {
   border-radius: 3px;
   margin-top: 16px;
 }
+/* 進捗ボード用: 配置図の上下圧縮表示（約50%） */
+.compact .bar-row {
+  margin-bottom: 2px;
+  gap: 3px;
+}
+.compact .bar-cell {
+  min-height: 22px;
+  font-size: 10px;
+}
+.compact .bar-label {
+  font-size: 0.72rem;
+}
+.compact .aisle-h {
+  height: 4px;
+  margin: 1px 0 3px 56px;
+}
+.compact .center-aisle {
+  height: 14px;
+  font-size: 0.7rem;
+  letter-spacing: 2px;
+  margin: 1px 0 3px 56px;
+}
+
 /* 見出し横の読み込み中表示 */
 .loading-inline {
   font-size: 0.8rem;
@@ -330,6 +353,11 @@ h2 {
   font-size: 11px;
   font-weight: bold;
   color: #1a1a1a;
+  /* 文字はマスの中心に表示 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .bar-cell.done {
   background: #c5c5c5;
