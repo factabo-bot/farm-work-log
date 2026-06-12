@@ -18,7 +18,7 @@ var TZ = "Asia/Tokyo";
 
 var RECORD_HEADERS = [
   "記録日時", "日付", "記録者", "userId",
-  "拠点", "棟", "列", "位置", "作業", "作業詳細", "備考",
+  "拠点", "棟", "列", "位置", "作業", "作業詳細", "備考", "記録ID",
 ];
 
 var TASK_HEADERS = [
@@ -45,6 +45,12 @@ function setup() {
     tasks.getRange(1, 1, 1, TASK_HEADERS.length).setValues([TASK_HEADERS]);
     tasks.setFrozenRows(1);
   }
+  // 既存の記録シートに「記録ID」列がなければ追加（取り消し機能用）
+  var rec2 = ss.getSheetByName(SHEET_RECORDS);
+  var headers = rec2.getRange(1, 1, 1, rec2.getLastColumn()).getValues()[0];
+  if (headers.indexOf("記録ID") < 0) {
+    rec2.getRange(1, headers.length + 1).setValue("記録ID");
+  }
 }
 
 // 記録・指示の受信
@@ -52,6 +58,7 @@ function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     if (data.type === "shiji") return saveShiji_(data);
+    if (data.type === "deleteRecords") return deleteRecords_(data);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
     var now = new Date();
     var dateStr = Utilities.formatDate(now, TZ, "yyyy-MM-dd");
@@ -72,6 +79,7 @@ function doPost(e) {
             c.row, c.pos,
             w, w === "その他" ? (en.workDetail || "") : "",
             data.note || "",
+            Utilities.getUuid(), // 記録ID（本人による取り消しに使う）
           ]);
         });
       });
@@ -88,6 +96,24 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
+}
+
+// 本人による記録の取り消し。記録IDとuserIdの両方が一致する行だけ削除する
+function deleteRecords_(data) {
+  var ids = data.ids || [];
+  if (ids.length === 0) return json_({ ok: true, deleted: 0 });
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
+  var values = sheet.getDataRange().getValues();
+  var idCol = RECORD_HEADERS.indexOf("記録ID");
+  var deleted = 0;
+  // 行番号がずれないように下から消す
+  for (var i = values.length - 1; i >= 1; i--) {
+    if (ids.indexOf(values[i][idCol]) >= 0 && values[i][3] === (data.userId || "")) {
+      sheet.deleteRow(i + 1);
+      deleted++;
+    }
+  }
+  return json_({ ok: true, deleted: deleted });
 }
 
 // 指示の保存。宛先×タスクを1行ずつタスクシートに書く
@@ -140,6 +166,32 @@ function doGet(e) {
       }
     }
     return json_({ ok: true, done: done });
+  }
+
+  // 今日の自分の記録一覧（取り消し用）。?action=mytoday&userId=xxx
+  if (action === "mytoday") {
+    var uid = String(e.parameter.userId || "");
+    var today2 = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+    var shm = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
+    var vm = shm.getDataRange().getValues();
+    var idCol2 = RECORD_HEADERS.indexOf("記録ID");
+    var mine = [];
+    for (var q = 1; q < vm.length; q++) {
+      if (dateKey_(vm[q][1]) !== today2) continue;
+      if (vm[q][3] !== uid) continue;
+      var tq = vm[q][0];
+      mine.push({
+        id: vm[q][idCol2] || "",
+        time: tq instanceof Date ? Utilities.formatDate(tq, TZ, "HH:mm") : String(tq).slice(11, 16),
+        base: vm[q][4],
+        building: vm[q][5],
+        row: vm[q][6],
+        pos: vm[q][7],
+        work: vm[q][8],
+        workDetail: vm[q][9],
+      });
+    }
+    return json_({ ok: true, records: mine });
   }
 
   // スタッフ一覧（指示画面の宛先候補）

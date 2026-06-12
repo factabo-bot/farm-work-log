@@ -271,6 +271,26 @@ function cellHeat(col, pos) {
   return { cls: " age" + step, label: days >= 7 ? "7+" : String(days) };
 }
 
+// 作業未選択時にバーへ表示する、その列の作業別経過日数（例: 収0 誘5 葉3）
+function cellAllWorksLabel(col, pos) {
+  const prefix = [state.base, state.building.name, col, pos].join("|") + "|";
+  const parts = [];
+  buildingWorks(state.building).forEach((w) => {
+    if (w === "その他") return;
+    const last = state.status.get(prefix + w);
+    if (!last) return;
+    const days = Math.round(
+      (new Date(formatToday() + "T00:00:00") - new Date(last + "T00:00:00")) / MS_DAY
+    );
+    parts.push(workAbbr(w) + (days >= 7 ? "7+" : days));
+  });
+  return parts.join(" ");
+}
+
+function workAbbr(w) {
+  return w === "その他" ? "他" : w.charAt(0);
+}
+
 function renderGrid() {
   const area = $("grid-area");
   area.innerHTML = "";
@@ -329,7 +349,9 @@ function renderGrid() {
       const heat = cellHeat(col, pos);
       let cls = "bar-cell" + heat.cls;
       if (state.cells.has(key)) cls += " selected";
-      const cell = el("button", cls, heat.label);
+      // 作業選択中＝その作業のヒートマップ、未選択＝列ごとの作業別経過日数
+      const label = heat.cls ? heat.label : cellAllWorksLabel(col, pos);
+      const cell = el("button", cls, label);
       cell.addEventListener("click", () => {
         state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
         renderGrid();

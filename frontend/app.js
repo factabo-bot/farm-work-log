@@ -47,6 +47,7 @@ async function init() {
 
   await loadToday();
   renderGrid();
+  loadMyRecords();
 
   $("add-item").addEventListener("click", () => {
     if (addCurrentItem()) {
@@ -355,6 +356,7 @@ async function submitAll() {
     renderItems();
     await loadToday();
     renderGrid();
+    loadMyRecords();
   } catch (err) {
     console.error(err);
     toast("⚠ 送信に失敗しました。電波の良い場所でもう一度お試しください");
@@ -421,7 +423,9 @@ function mockSave(payload) {
     cellList.forEach((c) => {
       en.works.forEach((w) => {
         all.push({
+          id: Date.now() + "-" + Math.random().toString(36).slice(2, 8),
           date: formatToday(),
+          time: new Date().toTimeString().slice(0, 5),
           recorder: payload.recorder,
           base: en.base,
           building: en.building,
@@ -442,6 +446,107 @@ function mockSave(payload) {
 function mockTodayRecords() {
   const all = JSON.parse(localStorage.getItem(MOCK_KEY) || "[]");
   return all.filter((r) => r.date === formatToday());
+}
+
+// ---------- 今日の自分の記録（取り消し用） ----------
+
+async function loadMyRecords() {
+  const box = $("my-records");
+  if (!box) return;
+  let recs = [];
+  if (state.mock) {
+    recs = mockTodayRecords().filter((r) => r.recorder === state.profile.displayName);
+  } else {
+    try {
+      const res = await fetch(
+        CONFIG.GAS_URL +
+          "?action=mytoday&userId=" +
+          encodeURIComponent(state.profile.userId) +
+          "&_=" +
+          Date.now()
+      );
+      const data = await res.json();
+      recs = data.records || [];
+    } catch (err) {
+      console.warn("自分の記録の取得に失敗", err);
+    }
+  }
+  renderMyRecords(recs);
+}
+
+function renderMyRecords(recs) {
+  const box = $("my-records");
+  box.innerHTML = "";
+  if (recs.length === 0) {
+    box.appendChild(el("div", "hint", "今日の記録はまだありません"));
+    return;
+  }
+  // 送信時刻×棟×作業ごとに1行へまとめる
+  const groups = new Map();
+  recs.forEach((r) => {
+    const work = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
+    const gkey = [r.time, r.base, r.building, work].join("\t");
+    if (!groups.has(gkey)) groups.set(gkey, { cells: [], ids: [] });
+    const g = groups.get(gkey);
+    if (r.row !== "" && r.row !== undefined && r.row !== null) {
+      g.cells.push({ row: Number(r.row), pos: r.pos });
+    }
+    if (r.id) g.ids.push(r.id);
+  });
+  groups.forEach((g, gkey) => {
+    const [time, base, building, work] = gkey.split("\t");
+    const b = findBuilding(base, building);
+    const place = g.cells.length > 0 ? " " + summarizeCells(g.cells, positionsOf(b)) : "";
+    const line = el("div", "item");
+    line.appendChild(el("span", "", `${time} ${building}${place} / ${work}`));
+
+    const del = el("button", "del", "取消");
+    del.addEventListener("click", () => {
+      // 誤タップ防止の2度押し確認
+      if (del.dataset.arm !== "1") {
+        del.dataset.arm = "1";
+        del.textContent = "本当に取消？";
+        setTimeout(() => {
+          del.dataset.arm = "";
+          del.textContent = "取消";
+        }, 3000);
+        return;
+      }
+      deleteMyRecords(g.ids);
+    });
+    line.appendChild(del);
+    box.appendChild(line);
+  });
+}
+
+async function deleteMyRecords(ids) {
+  if (ids.length === 0) {
+    toast("この記録は取り消しできません（記録IDのない古いデータ）");
+    return;
+  }
+  if (state.mock) {
+    const all = JSON.parse(localStorage.getItem(MOCK_KEY) || "[]");
+    localStorage.setItem(MOCK_KEY, JSON.stringify(all.filter((r) => !ids.includes(r.id))));
+    toast("取り消しました");
+  } else {
+    try {
+      const res = await fetch(CONFIG.GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ type: "deleteRecords", userId: state.profile.userId, ids }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "GAS error");
+      toast(`取り消しました（${data.deleted}件）`);
+    } catch (err) {
+      console.error(err);
+      toast("⚠ 取り消しに失敗しました。もう一度お試しください");
+      return;
+    }
+  }
+  await loadToday();
+  renderGrid();
+  loadMyRecords();
 }
 
 // ---------- 小物 ----------
