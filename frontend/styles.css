@@ -166,6 +166,74 @@ h2 {
   background: #fffde7;
 }
 
+/* 指示作成画面用 */
+.manual-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.manual-add input {
+  flex: 1;
+  min-height: 48px;
+  border: 2px solid #bbb;
+  border-radius: 10px;
+  padding: 0 10px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+.preview {
+  background: #fff;
+  border: 2px solid #ccc;
+  border-radius: 10px;
+  padding: 12px;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 0.95rem;
+  margin-top: 10px;
+}
+.block-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  color: #2e7d32;
+}
+.block-card .del {
+  border: none;
+  background: #eee;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #c62828;
+  font-weight: bold;
+}
+.task-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed #eee;
+}
+
+/* 作業状況ヒートマップ（最後にやってからの日数） */
+.cell.age0 { background: #a5d6a7; border-color: #81c784; }
+.cell.age1 { background: #fff59d; border-color: #fdd835; }
+.cell.age2 { background: #ffcc80; border-color: #ffb74d; }
+.cell.age3 { background: #ef9a9a; border-color: #e57373; }
+/* 選択中の見た目はヒートマップ色より優先する */
+.cell.selected {
+  background: #2e7d32;
+  border-color: #1b5e20;
+  color: #fff;
+}
+
 .entrance {
   text-align: center;
   /* 左端の奥/手前ラベル列の分だけ右に寄せて、マスの並びの中央に合わせる */

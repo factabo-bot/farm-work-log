@@ -13,11 +13,18 @@
 
 var SHEET_RECORDS = "記録";
 var SHEET_STAFF = "スタッフ";
+var SHEET_TASKS = "タスク";
 var TZ = "Asia/Tokyo";
 
 var RECORD_HEADERS = [
   "記録日時", "日付", "記録者", "userId",
   "拠点", "棟", "列", "位置", "作業", "作業詳細", "備考",
+];
+
+var TASK_HEADERS = [
+  "日付", "作成時刻", "宛先", "宛先userId", "順番",
+  "拠点", "棟", "場所", "セル", "作業", "作業詳細",
+  "宛先備考", "全体コメント", "状態",
 ];
 
 // 初期セットアップ。最初に1回だけエディタから実行する
@@ -33,12 +40,18 @@ function setup() {
     staff.getRange(1, 1, 1, 3).setValues([["userId", "表示名", "初回登録日時"]]);
     staff.setFrozenRows(1);
   }
+  if (!ss.getSheetByName(SHEET_TASKS)) {
+    var tasks = ss.insertSheet(SHEET_TASKS);
+    tasks.getRange(1, 1, 1, TASK_HEADERS.length).setValues([TASK_HEADERS]);
+    tasks.setFrozenRows(1);
+  }
 }
 
-// 記録の受信。1マス1行に展開して保存する
+// 記録・指示の受信
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+    if (data.type === "shiji") return saveShiji_(data);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
     var now = new Date();
     var dateStr = Utilities.formatDate(now, TZ, "yyyy-MM-dd");
@@ -75,6 +88,31 @@ function doPost(e) {
   }
 }
 
+// 指示の保存。宛先×タスクを1行ずつタスクシートに書く
+function saveShiji_(data) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TASKS);
+  var timeStr = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm:ss");
+  var rows = [];
+  (data.blocks || []).forEach(function (b) {
+    (b.tasks || []).forEach(function (t, i) {
+      rows.push([
+        data.date || "", timeStr,
+        b.name || "", b.userId || "", i + 1,
+        t.base || "", t.building || "",
+        t.place || "", JSON.stringify(t.cells || []),
+        t.work || "", t.workDetail || "",
+        b.note || "", data.comment || "", "未着手",
+      ]);
+    });
+  });
+  if (rows.length > 0) {
+    sheet
+      .getRange(sheet.getLastRow() + 1, 1, rows.length, TASK_HEADERS.length)
+      .setValues(rows);
+  }
+  return json_({ ok: true, saved: rows.length });
+}
+
 // セルの値を "yyyy-MM-dd" 形式の文字列にそろえる
 // （シートが文字列をDate型に自動変換しても、"2026/06/12"表記でも照合できるように）
 function dateKey_(v) {
@@ -100,6 +138,36 @@ function doGet(e) {
       }
     }
     return json_({ ok: true, done: done });
+  }
+
+  // スタッフ一覧（指示画面の宛先候補）
+  if (action === "staff") {
+    var stf = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_STAFF);
+    var sv = stf.getDataRange().getValues();
+    var staff = [];
+    for (var s = 1; s < sv.length; s++) {
+      staff.push({ userId: sv[s][0], name: sv[s][1] });
+    }
+    return json_({ ok: true, staff: staff });
+  }
+
+  // 直近N日の作業状況（指示画面のヒートマップ用）。?action=status&days=14
+  // 「拠点|棟|列|位置|作業」→ 最後にやった日 を返す
+  if (action === "status") {
+    var days = Math.max(1, Math.min(60, Number(e.parameter.days) || 14));
+    var since = new Date();
+    since.setDate(since.getDate() - days);
+    var sinceKey = Utilities.formatDate(since, TZ, "yyyy-MM-dd");
+    var sh3 = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
+    var vals3 = sh3.getDataRange().getValues();
+    var status = {};
+    for (var m = 1; m < vals3.length; m++) {
+      var dk = dateKey_(vals3[m][1]);
+      if (dk < sinceKey) continue;
+      var key = [vals3[m][4], vals3[m][5], vals3[m][6], vals3[m][7], vals3[m][8]].join("|");
+      if (!status[key] || status[key] < dk) status[key] = dk;
+    }
+    return json_({ ok: true, status: status });
   }
 
   // 指定日の記録一覧（進捗ボード用）。?action=records&date=yyyy-MM-dd

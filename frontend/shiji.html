@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>指示をつくる</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>📣 指示をつくる</h1>
+  <div class="header-sub">
+    <a class="header-link" href="board.html">📊 進捗ボード</a>
+    <a class="header-link" href="index.html">📝 記録画面</a>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>冒頭の全体コメント（任意）</h2>
+    <textarea id="comment" placeholder="例: おはようございます。今日は気温が上がるので休憩はこまめに。"></textarea>
+  </section>
+
+  <section>
+    <h2>① 宛先を選ぶ</h2>
+    <div id="staff-buttons" class="btn-row"></div>
+    <div class="manual-add">
+      <input id="manual-name" placeholder="名前を手入力で追加">
+      <button id="manual-add-btn" class="btn" type="button">追加</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>② 拠点・棟</h2>
+    <div id="base-buttons" class="btn-row"></div>
+    <div id="building-buttons" class="btn-row" style="margin-top:8px"></div>
+  </section>
+
+  <section>
+    <h2>③ 作業</h2>
+    <div id="work-buttons" class="btn-row"></div>
+    <textarea id="work-detail" placeholder="作業内容を記入" hidden></textarea>
+  </section>
+
+  <section>
+    <h2>④ 場所（任意）— 直近の作業状況マップ</h2>
+    <div id="grid-area"></div>
+    <p class="hint">③で作業を選ぶと色が付きます。数字＝その作業を最後にやってから何日たったか。
+    緑＝最近やった ／ 黄〜オレンジ＝5日以上 ／ 赤＝1週間以上 or 直近2週間に記録なし。
+    場所を指定しなければ「場所おまかせ」の指示になります</p>
+  </section>
+
+  <section>
+    <button id="add-task" class="btn-secondary" type="button">＋ 指示リストに追加</button>
+    <div id="block-list"></div>
+    <p class="hint">同じ人に複数追加すると ①②… の優先順になります（できるところまで方式）</p>
+  </section>
+
+  <section>
+    <button id="preview-btn" class="btn-primary" type="button">プレビューを見る</button>
+    <pre id="preview" class="preview" hidden></pre>
+    <button id="copy-btn" class="btn-secondary" type="button" hidden>📋 文面をコピー</button>
+    <button id="save-btn" class="btn-primary" type="button" hidden>シートに保存する</button>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+
+<script src="config.js"></script>
+<script src="masters.js"></script>
+<script src="shiji.js"></script>
+</body>
+</html>
