@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>作業記録</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>🍅 作業記録</h1>
+  <div class="header-sub">
+    <span id="date-display"></span>
+    <span id="user-info"></span>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>拠点</h2>
+    <div id="base-buttons" class="btn-row"></div>
+  </section>
+
+  <section>
+    <h2>① 棟を選択</h2>
+    <div id="building-buttons" class="btn-row"></div>
+  </section>
+
+  <section>
+    <h2>② 作業を選択（複数えらべます）</h2>
+    <div id="work-buttons" class="btn-row"></div>
+    <textarea id="work-detail" placeholder="やった作業を記入" hidden></textarea>
+  </section>
+
+  <section>
+    <h2>③ 場所をタップ（複数えらべます）</h2>
+    <div id="grid-area"></div>
+    <p class="hint">グレー＝今日記録済み（文字はやった作業）／ 図は横にスクロールできます</p>
+  </section>
+
+  <section>
+    <button id="add-item" class="btn-secondary" type="button">＋ 別の作業も記録する</button>
+    <div id="item-list"></div>
+  </section>
+
+  <section>
+    <textarea id="note" placeholder="備考（任意）：病気を見つけた、資材が少ない等"></textarea>
+    <button id="submit" class="btn-primary" type="button">記録する</button>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="config.js"></script>
+<script src="masters.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
