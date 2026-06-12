@@ -74,7 +74,7 @@ async function refresh() {
     const result = await fetchRecordsFor(state.date);
     if (seq !== loadSeq) return;
     state.records = result.records;
-    setGridLoading(result.ok ? "" : "（読み込み失敗）");
+    setGridLoading(result.ok ? `（${state.records.length}件）` : "（読み込み失敗）");
     renderGrid();
     renderList();
     if (!result.ok) {
@@ -88,7 +88,7 @@ async function refresh() {
     const result = await fetchStatus();
     if (seq !== loadSeq) return;
     state.status = result.status;
-    setGridLoading(result.ok ? "" : "（読み込み失敗）");
+    setGridLoading(result.ok ? `（取得 ${state.status.size}件）` : "（読み込み失敗）");
     renderGrid();
   }
 }
@@ -100,7 +100,7 @@ async function fetchRecordsFor(date) {
     const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
     return { ok: true, records: all.filter((r) => r.date === date) };
   }
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(
         CONFIG.GAS_URL + "?action=records&date=" + date + "&_=" + Date.now()
@@ -109,6 +109,7 @@ async function fetchRecordsFor(date) {
       return { ok: true, records: data.records || [] };
     } catch (err) {
       console.warn("記録の取得に失敗（試行" + attempt + "）", err);
+      await sleep(600);
     }
   }
   return { ok: false, records: [] };
@@ -123,7 +124,7 @@ async function fetchStatus() {
     });
     return { ok: true, status: map };
   }
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(CONFIG.GAS_URL + "?action=status&days=30&_=" + Date.now());
       const data = await res.json();
@@ -131,6 +132,7 @@ async function fetchStatus() {
       return { ok: true, status: map };
     } catch (err) {
       console.warn("作業状況の取得に失敗（試行" + attempt + "）", err);
+      await sleep(600);
     }
   }
   return { ok: false, status: map };
@@ -373,6 +375,10 @@ function renderList() {
 }
 
 // ---------- 小物 ----------
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
