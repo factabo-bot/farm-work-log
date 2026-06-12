@@ -236,12 +236,16 @@ h2 {
 
 .entrance {
   text-align: center;
-  /* 左端の奥/手前ラベル列の分だけ右に寄せて、マスの並びの中央に合わせる */
+  /* 左端のラベル列の分だけ右に寄せて、マスの並びの中央に合わせる */
   padding-left: 43px;
   color: #b08d57;
   font-size: 0.85rem;
   font-weight: bold;
   margin-top: 8px;
+}
+/* ラベル列なし（位置区分を使わない）場合は補正不要 */
+.grid-inner.no-labels .entrance {
+  padding-left: 0;
 }
 .cell.done {
   background: #c5c5c5;

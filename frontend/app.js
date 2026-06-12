@@ -61,6 +61,11 @@ function buildingsOfBase() {
   return MASTERS.buildings.filter((b) => b.base === state.base);
 }
 
+// 位置区分（奥/手前）は廃止したが、マスタに定義があれば従う（互換用）
+function positionsOf(b) {
+  return b.positions && b.positions.length ? b.positions : [""];
+}
+
 function renderBases() {
   const box = $("base-buttons");
   box.innerHTML = "";
@@ -101,18 +106,22 @@ function renderGrid() {
   const b = state.building;
   if (!b) return;
 
+  const positions = positionsOf(b);
+  const hasLabels = positions.some((p) => p);
   const flex = el("div", "grid-flex");
 
-  // 左端: 行ラベル（奥/手前）
-  const labelCol = el("div", "grid-col label-col");
-  labelCol.appendChild(el("div", "col-num", ""));
-  b.positions.forEach((pos) => labelCol.appendChild(el("div", "row-label", pos)));
-  flex.appendChild(labelCol);
+  // 左端: 行ラベル（位置区分がある場合のみ）
+  if (hasLabels) {
+    const labelCol = el("div", "grid-col label-col");
+    labelCol.appendChild(el("div", "col-num", ""));
+    positions.forEach((pos) => labelCol.appendChild(el("div", "row-label", pos)));
+    flex.appendChild(labelCol);
+  }
 
   for (let col = 1; col <= b.cols; col++) {
     const colDiv = el("div", "grid-col");
     colDiv.appendChild(el("div", "col-num", String(col)));
-    b.positions.forEach((pos) => {
+    positions.forEach((pos) => {
       const key = col + "|" + pos;
       const doneKey = [state.base, b.name, col, pos].join("|");
       const doneWorks = state.todayWorks.get(doneKey);
@@ -136,7 +145,7 @@ function renderGrid() {
     }
   }
   // 図と入口マークを同じ幅の箱に入れる（横スクロール時も図の中央に入口が来る）
-  const inner = el("div", "grid-inner");
+  const inner = el("div", "grid-inner" + (hasLabels ? "" : " no-labels"));
   inner.appendChild(flex);
   inner.appendChild(el("div", "entrance", "▲ 入口（妻面中央）"));
   area.appendChild(inner);
@@ -360,7 +369,7 @@ function summarizeCells(cells) {
         ranges.push(start === prev ? `${start}` : `${start}〜${prev}`);
         start = prev = rows[i];
       }
-      return `${ranges.join(",")}列(${pos})`;
+      return pos ? `${ranges.join(",")}列(${pos})` : `${ranges.join(",")}列`;
     })
     .join(" ");
 }
