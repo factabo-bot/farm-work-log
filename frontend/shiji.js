@@ -58,6 +58,25 @@ async function init() {
   renderStaff();
   await loadStatus();
   renderGrid();
+  loadQuota();
+}
+
+// 今月のBot送信の残り回数を表示（Bot設定済みのときだけ出る）
+async function loadQuota() {
+  const box = $("quota-info");
+  if (!box || state.mock) return;
+  try {
+    const res = await fetch(CONFIG.GAS_URL + "?action=quota&_=" + Date.now());
+    const data = await res.json();
+    if (!data.ok || !data.members) return;
+    const remain = Math.max(0, Math.floor((data.limit - data.usage) / data.members));
+    box.textContent =
+      `今月のメンション送信: 残りあと約${remain}回` +
+      `（消費 ${data.usage}/${data.limit}通・グループ${data.members}人）` +
+      (remain <= 3 ? " ⚠ 残りわずか。超えると本人名義の送信に切り替わります" : "");
+  } catch (err) {
+    console.warn("送信残量の取得に失敗", err);
+  }
 }
 
 // ---------- データ取得 ----------

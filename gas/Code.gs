@@ -265,6 +265,32 @@ function doGet(e) {
     return json_({ ok: true, records: mine });
   }
 
+  // 今月のメッセージ消費量と残り送信回数の目安（依頼画面の表示用）
+  if (action === "quota") {
+    var propsQ = PropertiesService.getScriptProperties();
+    var tokenQ = propsQ.getProperty("LINE_TOKEN");
+    var groupIdQ = propsQ.getProperty("GROUP_ID");
+    if (!tokenQ) return json_({ ok: false, error: "Bot未設定" });
+    try {
+      var usageRes = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/quota/consumption", {
+        headers: { Authorization: "Bearer " + tokenQ },
+        muteHttpExceptions: true,
+      });
+      var usage = JSON.parse(usageRes.getContentText()).totalUsage || 0;
+      var members = 0;
+      if (groupIdQ) {
+        var memRes = UrlFetchApp.fetch(
+          "https://api.line.me/v2/bot/group/" + groupIdQ + "/members/count",
+          { headers: { Authorization: "Bearer " + tokenQ }, muteHttpExceptions: true }
+        );
+        members = JSON.parse(memRes.getContentText()).count || 0;
+      }
+      return json_({ ok: true, usage: usage, limit: 200, members: members });
+    } catch (err) {
+      return json_({ ok: false, error: String(err) });
+    }
+  }
+
   // スタッフ一覧（指示画面の宛先候補）
   if (action === "staff") {
     var stf = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_STAFF);
