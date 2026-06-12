@@ -129,6 +129,43 @@ h2 {
   border-radius: 3px;
   margin-top: 16px;
 }
+/* 進捗ボード用 */
+.header-link {
+  color: #fff;
+  text-decoration: none;
+  font-weight: bold;
+}
+.date-nav {
+  display: flex;
+  gap: 8px;
+}
+.date-nav .btn {
+  flex: 0 0 auto;
+}
+.date-nav input[type="date"] {
+  flex: 1;
+  min-height: 48px;
+  border: 2px solid #bbb;
+  border-radius: 10px;
+  padding: 0 8px;
+  font-size: 1rem;
+  font-family: inherit;
+  background: #fff;
+}
+.cell.filled {
+  background: #2e7d32;
+  border-color: #1b5e20;
+  color: #fff;
+}
+.recorder-head {
+  font-weight: bold;
+  color: #2e7d32;
+  margin: 12px 0 4px;
+}
+.note-item {
+  background: #fffde7;
+}
+
 .entrance {
   text-align: center;
   /* 左端の奥/手前ラベル列の分だけ右に寄せて、マスの並びの中央に合わせる */

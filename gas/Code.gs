@@ -102,6 +102,33 @@ function doGet(e) {
     return json_({ ok: true, done: done });
   }
 
+  // 指定日の記録一覧（進捗ボード用）。?action=records&date=yyyy-MM-dd
+  if (action === "records") {
+    var dateParam = String(e.parameter.date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      dateParam = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+    }
+    var sh2 = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
+    var vals2 = sh2.getDataRange().getValues();
+    var records = [];
+    for (var k = 1; k < vals2.length; k++) {
+      if (dateKey_(vals2[k][1]) !== dateParam) continue;
+      var t = vals2[k][0];
+      records.push({
+        time: t instanceof Date ? Utilities.formatDate(t, TZ, "HH:mm") : String(t),
+        recorder: vals2[k][2],
+        base: vals2[k][4],
+        building: vals2[k][5],
+        row: vals2[k][6],
+        pos: vals2[k][7],
+        work: vals2[k][8],
+        workDetail: vals2[k][9],
+        note: vals2[k][10],
+      });
+    }
+    return json_({ ok: true, records: records });
+  }
+
   // 動作診断用。問題が解決したら消してよい
   if (action === "debug") {
     var ss = SpreadsheetApp.getActiveSpreadsheet();

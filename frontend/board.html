@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>進捗ボード</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>📊 進捗ボード</h1>
+  <div class="header-sub">
+    <a class="header-link" href="index.html">📝 記録画面へ</a>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="date-nav">
+      <button id="prev-day" class="btn" type="button">◀ 前日</button>
+      <input type="date" id="date-input">
+      <button id="next-day" class="btn" type="button">翌日 ▶</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>拠点</h2>
+    <div id="base-buttons" class="btn-row"></div>
+  </section>
+
+  <section>
+    <h2>棟</h2>
+    <div id="building-buttons" class="btn-row"></div>
+  </section>
+
+  <section>
+    <h2>作業でしぼる</h2>
+    <div id="work-filter" class="btn-row"></div>
+  </section>
+
+  <section>
+    <h2>配置図</h2>
+    <div id="grid-area"></div>
+    <p class="hint">緑＝記録あり（文字はやった作業）／ 図は横にスクロールできます</p>
+  </section>
+
+  <section>
+    <h2 id="list-title">記録一覧</h2>
+    <div id="record-list"></div>
+  </section>
+</main>
+
+<script src="config.js"></script>
+<script src="masters.js"></script>
+<script src="board.js"></script>
+</body>
+</html>
