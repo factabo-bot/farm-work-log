@@ -174,7 +174,9 @@ function selectBuilding(building) {
   renderGrid();
 }
 
-// 棟の作業状況サマリ「収穫 0日｜誘引 5日｜葉かき 3日」。タップでその作業を選択
+// 棟の作業状況サマリ「収穫 0日｜誘引 5日｜葉かき 30+」。タップでその作業を選択。
+// 数字は「各列の経過日数の最大値」＝一番手が入っていない列を基準にする。
+// 直近30日に記録のない列が1つでもあれば「30+」（取得範囲が30日のため）
 function renderStatusSummary() {
   const box = $("status-summary");
   if (!box) return;
@@ -184,28 +186,53 @@ function renderStatusSummary() {
   const works = buildingWorks(b).filter((w) => w !== "その他");
   if (works.length === 0) return;
 
-  // 棟内でその作業を最後にやった日（どの列でもよいので最新）
-  const latest = {};
-  state.status.forEach((dateStr, key) => {
-    const p = key.split("|");
-    if (p[0] !== state.base || p[1] !== b.name) return;
-    if (!latest[p[4]] || latest[p[4]] < dateStr) latest[p[4]] = dateStr;
-  });
+  const today0 = new Date(formatToday() + "T00:00:00");
+  const daysSince = (dateStr) => Math.round((today0 - new Date(dateStr + "T00:00:00")) / MS_DAY);
 
   works.forEach((w) => {
     let text;
     let cls = "status-chip";
-    if (!latest[w]) {
-      text = w + " －";
-      cls += " stale";
+
+    if (isFree(b) || (MASTERS.noPlaceWorks || []).includes(w)) {
+      // 列のない場所・場所不要の作業は「最後にやった日」からの経過
+      let latest = null;
+      state.status.forEach((dateStr, key) => {
+        const p = key.split("|");
+        if (p[0] !== state.base || p[1] !== b.name || p[4] !== w) return;
+        if (!latest || latest < dateStr) latest = dateStr;
+      });
+      if (!latest) {
+        text = w + " －";
+        cls += " stale";
+      } else {
+        const d = daysSince(latest);
+        text = w + " " + d + "日";
+        if (d >= 7) cls += " stale";
+        else if (d >= 5) cls += " warn";
+      }
     } else {
-      const days = Math.round(
-        (new Date(formatToday() + "T00:00:00") - new Date(latest[w] + "T00:00:00")) / MS_DAY
-      );
-      text = w + " " + days + "日";
-      if (days >= 7) cls += " stale";
-      else if (days >= 5) cls += " warn";
+      // 列ごとの経過日数の最大値
+      const pos = positionsOf(b)[0];
+      let maxDays = -1;
+      let missing = false;
+      for (let col = 1; col <= b.cols; col++) {
+        const last = state.status.get([state.base, b.name, col, pos, w].join("|"));
+        if (!last) missing = true;
+        else maxDays = Math.max(maxDays, daysSince(last));
+      }
+      if (maxDays < 0) {
+        text = w + " －"; // どの列にも記録なし
+        cls += " stale";
+      } else if (missing) {
+        text = w + " 30+"; // 記録のない列が残っている
+        cls += " stale";
+      } else {
+        text = w + " " + maxDays + "日";
+        if (maxDays >= 7) cls += " stale";
+        else if (maxDays >= 5) cls += " warn";
+      }
     }
+
     const chip = el("button", cls, text);
     chip.addEventListener("click", () => {
       state.work = w;
