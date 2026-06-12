@@ -23,18 +23,22 @@ async function init() {
   if (CONFIG.LIFF_ID && typeof liff !== "undefined") {
     try {
       await liff.init({ liffId: CONFIG.LIFF_ID });
-      if (!liff.isLoggedIn()) {
+      if (liff.isLoggedIn()) {
+        const p = await liff.getProfile();
+        state.profile = { userId: p.userId, displayName: p.displayName };
+      } else if (liff.isInClient()) {
         liff.login();
         return;
       }
-      const p = await liff.getProfile();
-      state.profile = { userId: p.userId, displayName: p.displayName };
+      // LINE外のブラウザで未ログインの場合は、強制ログインせず「テスト利用者」のまま動かす
     } catch (err) {
-      console.warn("LIFF初期化に失敗。お試しモードで続行します", err);
+      console.warn("LIFF初期化に失敗。テスト利用者として続行します", err);
     }
   }
-  $("user-info").textContent =
-    state.profile.displayName + (state.mock ? "（お試しモード）" : "");
+  const suffix = state.mock
+    ? "（お試しモード）"
+    : state.profile.userId ? "" : "（LINE外）";
+  $("user-info").textContent = state.profile.displayName + suffix;
 
   state.base = MASTERS.bases[0];
   renderBases();
