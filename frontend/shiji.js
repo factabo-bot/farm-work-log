@@ -396,7 +396,7 @@ function addTask() {
   renderWorkArea();
   renderGrid();
   renderBlocks();
-  toast("指示リストに追加しました");
+  toast("依頼リストに追加しました");
 }
 
 function taskText(t) {
@@ -426,7 +426,7 @@ function buildMessage() {
 
 function showPreview() {
   if (state.blocks.length === 0) {
-    toast("指示リストが空です");
+    toast("依頼リストが空です");
     return;
   }
   $("preview").textContent = buildMessage();
@@ -441,7 +441,7 @@ function showPreview() {
 // それ以外では送信先を選ぶLINEの共有画面を出す。送信成功時はシートにも自動保存する。
 async function sendToLine() {
   if (state.blocks.length === 0) {
-    toast("指示リストが空です");
+    toast("依頼リストが空です");
     return;
   }
   const text = buildMessage();
