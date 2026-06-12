@@ -49,7 +49,10 @@ async function init() {
   renderGrid();
 
   $("add-item").addEventListener("click", () => {
-    if (addCurrentItem()) toast("リストに追加しました。続けて選んでください");
+    if (addCurrentItem()) {
+      toast("リストに追加しました。続けて選んでください");
+      window.scrollTo({ top: 0, behavior: "smooth" }); // 次の選択のため先頭に戻る
+    }
   });
   $("submit").addEventListener("click", submitAll);
 }
