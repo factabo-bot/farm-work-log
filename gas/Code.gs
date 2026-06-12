@@ -57,7 +57,9 @@ function setup() {
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+    if (data.events) return handleWebhook_(data); // LINEからのWebhook（グループID取得用）
     if (data.type === "shiji") return saveShiji_(data);
+    if (data.type === "pushShiji") return pushShiji_(data);
     if (data.type === "deleteRecords") return deleteRecords_(data);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
     var now = new Date();
@@ -96,6 +98,75 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
+}
+
+// ===== LINE Bot（メンション付き送信） =====
+// 必要な設定（プロジェクトの設定 > スクリプトプロパティ）:
+//   LINE_TOKEN = Messaging APIのチャネルアクセストークン（長期）
+//   GROUP_ID   = Webhookで自動登録される（Botをグループに招待して誰かが発言すればよい）
+
+// LINEからのWebhook。Botが参加しているグループのIDを記憶する
+function handleWebhook_(data) {
+  var props = PropertiesService.getScriptProperties();
+  (data.events || []).forEach(function (ev) {
+    if (ev.source && ev.source.type === "group" && ev.source.groupId) {
+      props.setProperty("GROUP_ID", ev.source.groupId);
+    }
+  });
+  return json_({ ok: true });
+}
+
+// 依頼をメンション付きでグループにプッシュ送信する
+// blocks: [{members:[{name,userId}], lines:["① …"], note:""}]
+function pushShiji_(data) {
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty("LINE_TOKEN");
+  var groupId = props.getProperty("GROUP_ID");
+  if (!token) return json_({ ok: false, error: "LINE_TOKEN未設定" });
+  if (!groupId) {
+    return json_({ ok: false, error: "グループ未登録（Botをグループに招待して誰かが発言してください）" });
+  }
+
+  var text = "";
+  var substitution = {};
+  var n = 0;
+  if (data.comment) text += data.comment + "\n\n";
+  (data.blocks || []).forEach(function (b) {
+    var mentions = [];
+    (b.members || []).forEach(function (m) {
+      if (m.userId) {
+        var key = "m" + n++;
+        substitution[key] = { type: "mention", mentionee: { type: "user", userId: m.userId } };
+        mentions.push("{" + key + "}");
+      } else {
+        mentions.push("@" + m.name); // userId不明の人は文字のまま
+      }
+    });
+    text += mentions.join(" ") + "\n";
+    (b.lines || []).forEach(function (line) {
+      text += line + "\n";
+    });
+    if (b.note) text += "備考: " + b.note + "\n";
+    text += "\n";
+  });
+  text = text.replace(/\s+$/, "");
+
+  var message =
+    Object.keys(substitution).length > 0
+      ? { type: "textV2", text: text, substitution: substitution }
+      : { type: "text", text: text };
+
+  var res = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify({ to: groupId, messages: [message] }),
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) {
+    return json_({ ok: false, error: "LINE送信失敗: " + res.getContentText() });
+  }
+  return json_({ ok: true });
 }
 
 // 本人による記録の取り消し。記録IDとuserIdの両方が一致する行だけ削除する

@@ -519,6 +519,39 @@ async function sendToLine() {
     return;
   }
   const text = buildMessage();
+
+  // まずBot（本物のメンション付き）での送信を試す。Bot未設定なら本人名義の投稿に切り替わる
+  if (!state.mock) {
+    try {
+      const payload = {
+        type: "pushShiji",
+        comment: $("comment").value.trim(),
+        blocks: state.blocks.map((b) => ({
+          members: b.names.map((name) => {
+            const s = state.staff.find((x) => x.name === name);
+            return { name, userId: (s && s.userId) || "" };
+          }),
+          lines: b.tasks.map((t, i) => (CIRCLED[i] || i + 1 + ".") + " " + taskText(t)),
+          note: b.note.trim(),
+        })),
+      };
+      const res = await fetch(CONFIG.GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast("✅ メンション付きでグループに送信しました");
+        save(true);
+        return;
+      }
+      console.warn("Botプッシュ不可:", data.error);
+    } catch (err) {
+      console.warn("Botプッシュ失敗。本人名義の送信に切り替えます", err);
+    }
+  }
+
   if (!state.liffReady) {
     toast("LINE連携が使えない開き方です。「文面をコピー」で貼り付けてください");
     return;
