@@ -230,8 +230,6 @@ function renderGrid() {
   bulk.appendChild(clearBtn);
   area.appendChild(bulk);
 
-  area.appendChild(el("div", "entrance-left", "🚪 入口（妻面中央）は左です"));
-
   const positions = positionsOf(b);
   const wrap = el("div", "bar-grid");
 
@@ -270,7 +268,12 @@ function renderGrid() {
       wrap.appendChild(el("div", "aisle-h", ""));
     }
   }
-  area.appendChild(wrap);
+
+  // 左端に上から下まで通しの「入口」ブロック
+  const outer = el("div", "bar-wrap");
+  outer.appendChild(el("div", "entrance-block", "入口"));
+  outer.appendChild(wrap);
+  area.appendChild(outer);
 }
 
 function renderBlocks() {

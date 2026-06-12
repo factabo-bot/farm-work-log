@@ -255,8 +255,6 @@ function renderGrid() {
       ? "緑＝記録あり（文字はやった作業）"
       : "数字＝最後にやってから何日たったか（青＝最近 → 赤＝7日以上 or 記録なし）";
 
-  area.appendChild(el("div", "entrance-left", "🚪 入口（妻面中央）は左です"));
-
   const positions = positionsOf(b);
   const worksMap = state.mode === "day" ? cellWorksMap() : null;
   const wrap = el("div", "bar-grid");
@@ -289,7 +287,12 @@ function renderGrid() {
       wrap.appendChild(el("div", "aisle-h", ""));
     }
   }
-  area.appendChild(wrap);
+
+  // 左端に上から下まで通しの「入口」ブロック
+  const outer = el("div", "bar-wrap");
+  outer.appendChild(el("div", "entrance-block", "入口"));
+  outer.appendChild(wrap);
+  area.appendChild(outer);
 }
 
 // その日の記録一覧（全拠点分）。記録者ごとに棟×作業でまとめる

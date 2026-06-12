@@ -231,11 +231,27 @@ h2 {
   min-height: 40px;
   font-size: 0.9rem;
 }
-.entrance-left {
-  color: #b08d57;
+/* 配置図の左端、上から下まで通しの「入口」ブロック */
+.bar-wrap {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.bar-wrap .bar-grid {
+  flex: 1;
+}
+.entrance-block {
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: vertical-rl;
+  letter-spacing: 8px;
+  background: #b08d57;
+  color: #fff;
   font-weight: bold;
-  font-size: 0.85rem;
-  margin-bottom: 6px;
+  font-size: 0.95rem;
+  border-radius: 8px;
 }
 .bar-grid {
   background: #fff;
