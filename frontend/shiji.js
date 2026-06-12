@@ -57,6 +57,7 @@ async function init() {
   await loadStaff();
   renderStaff();
   await loadStatus();
+  renderStatusSummary();
   renderGrid();
 }
 
@@ -168,8 +169,52 @@ function selectBuilding(building) {
   state.work = null;
   $("work-detail").value = "";
   renderBuildings();
+  renderStatusSummary();
   renderWorkArea();
   renderGrid();
+}
+
+// 棟の作業状況サマリ「収穫 0日｜誘引 5日｜葉かき 3日」。タップでその作業を選択
+function renderStatusSummary() {
+  const box = $("status-summary");
+  if (!box) return;
+  box.innerHTML = "";
+  const b = state.building;
+  if (!b) return;
+  const works = buildingWorks(b).filter((w) => w !== "その他");
+  if (works.length === 0) return;
+
+  // 棟内でその作業を最後にやった日（どの列でもよいので最新）
+  const latest = {};
+  state.status.forEach((dateStr, key) => {
+    const p = key.split("|");
+    if (p[0] !== state.base || p[1] !== b.name) return;
+    if (!latest[p[4]] || latest[p[4]] < dateStr) latest[p[4]] = dateStr;
+  });
+
+  works.forEach((w) => {
+    let text;
+    let cls = "status-chip";
+    if (!latest[w]) {
+      text = w + " －";
+      cls += " stale";
+    } else {
+      const days = Math.round(
+        (new Date(formatToday() + "T00:00:00") - new Date(latest[w] + "T00:00:00")) / MS_DAY
+      );
+      text = w + " " + days + "日";
+      if (days >= 7) cls += " stale";
+      else if (days >= 5) cls += " warn";
+    }
+    const chip = el("button", cls, text);
+    chip.addEventListener("click", () => {
+      state.work = w;
+      if (!isFree(b)) $("work-detail").hidden = w === "その他" ? false : true;
+      renderWorkArea();
+      renderGrid();
+    });
+    box.appendChild(chip);
+  });
 }
 
 function renderBuildings() {
