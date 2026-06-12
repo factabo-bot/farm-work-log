@@ -60,15 +60,21 @@ function setMode(mode) {
 // 連打や通信の遅延で応答が前後しても、最後に要求した結果だけを画面に反映する
 let loadSeq = 0;
 
+// 古いHTMLがキャッシュされていても落ちないようにnullを許容する
+function setGridLoading(text) {
+  const e = $("grid-loading");
+  if (e) e.textContent = text;
+}
+
 async function refresh() {
   const seq = ++loadSeq;
-  $("grid-loading").textContent = "（読み込み中…）";
+  setGridLoading("（読み込み中…）");
   if (state.mode === "day") {
     $("list-title").textContent = "記録一覧（読み込み中…）";
     const result = await fetchRecordsFor(state.date);
     if (seq !== loadSeq) return;
     state.records = result.records;
-    $("grid-loading").textContent = result.ok ? "" : "（読み込み失敗）";
+    setGridLoading(result.ok ? "" : "（読み込み失敗）");
     renderGrid();
     renderList();
     if (!result.ok) {
@@ -82,7 +88,7 @@ async function refresh() {
     const result = await fetchStatus();
     if (seq !== loadSeq) return;
     state.status = result.status;
-    $("grid-loading").textContent = result.ok ? "" : "（読み込み失敗）";
+    setGridLoading(result.ok ? "" : "（読み込み失敗）");
     renderGrid();
   }
 }
