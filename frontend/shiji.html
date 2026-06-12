@@ -10,8 +10,8 @@
 <header>
   <h1>📣 指示をつくる</h1>
   <div class="header-sub">
-    <a class="header-link" href="board.html">📊 進捗ボード</a>
     <a class="header-link" href="index.html">📝 記録画面</a>
+    <a class="header-link" href="board.html">📊 進捗ボード</a>
   </div>
 </header>
 
@@ -22,7 +22,7 @@
   </section>
 
   <section>
-    <h2>① 宛先を選ぶ</h2>
+    <h2>① 宛先を選ぶ（複数えらべます）</h2>
     <div id="staff-buttons" class="btn-row"></div>
     <div class="manual-add">
       <input id="manual-name" placeholder="名前を手入力で追加">
@@ -45,8 +45,8 @@
   <section>
     <h2>④ 場所（任意）— 直近の作業状況マップ</h2>
     <div id="grid-area"></div>
-    <p class="hint">③で作業を選ぶと色が付きます。数字＝その作業を最後にやってから何日たったか。
-    緑＝最近やった ／ 黄〜オレンジ＝5日以上 ／ 赤＝1週間以上 or 直近2週間に記録なし。
+    <p class="hint">③で作業を選ぶと色が付きます。数字＝最後にやってから何日たったか
+    （青＝最近 → 赤＝7日以上 or 直近に記録なし）。列番号タップ＝列全体を選択。
     場所を指定しなければ「場所おまかせ」の指示になります</p>
   </section>
 
@@ -59,13 +59,15 @@
   <section>
     <button id="preview-btn" class="btn-primary" type="button">プレビューを見る</button>
     <pre id="preview" class="preview" hidden></pre>
+    <button id="send-btn" class="btn-primary" type="button" hidden>📲 LINEに送信</button>
     <button id="copy-btn" class="btn-secondary" type="button" hidden>📋 文面をコピー</button>
-    <button id="save-btn" class="btn-primary" type="button" hidden>シートに保存する</button>
+    <button id="save-btn" class="btn-secondary" type="button" hidden>シートに保存のみ</button>
   </section>
 </main>
 
 <div id="toast" hidden></div>
 
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="config.js"></script>
 <script src="masters.js"></script>
 <script src="shiji.js"></script>

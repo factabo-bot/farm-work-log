@@ -59,9 +59,11 @@ function doPost(e) {
 
     var rows = [];
     (data.entries || []).forEach(function (en) {
-      // 作業は複数選択可。1マス×1作業＝1行に展開する
+      // 作業は複数選択可。1マス×1作業＝1行に展開する。
+      // 列のない場所（露地・育苗ハウス・作業場）は列・位置を空欄で1行
       var works = en.works || (en.work ? [en.work] : []);
-      (en.cells || []).forEach(function (c) {
+      var cellList = en.cells && en.cells.length > 0 ? en.cells : [{ row: "", pos: "" }];
+      cellList.forEach(function (c) {
         works.forEach(function (w) {
           rows.push([
             timeStr, dateStr,

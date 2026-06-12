@@ -10,13 +10,17 @@
 <header>
   <h1>📊 進捗ボード</h1>
   <div class="header-sub">
-    <a class="header-link" href="index.html">📝 記録画面へ</a>
+    <a class="header-link" href="index.html">📝 記録画面</a>
     <a class="header-link" href="shiji.html">📣 指示をつくる</a>
   </div>
 </header>
 
 <main>
   <section>
+    <div id="mode-buttons" class="btn-row"></div>
+  </section>
+
+  <section id="date-nav-sec">
     <div class="date-nav">
       <button id="prev-day" class="btn" type="button">◀ 前日</button>
       <input type="date" id="date-input">
@@ -35,17 +39,17 @@
   </section>
 
   <section>
-    <h2>作業でしぼる</h2>
+    <h2 id="work-filter-title">作業でしぼる</h2>
     <div id="work-filter" class="btn-row"></div>
   </section>
 
   <section>
     <h2>配置図</h2>
     <div id="grid-area"></div>
-    <p class="hint">緑＝記録あり（文字はやった作業）／ 図は横にスクロールできます</p>
+    <p class="hint" id="grid-hint"></p>
   </section>
 
-  <section>
+  <section id="list-sec">
     <h2 id="list-title">記録一覧</h2>
     <div id="record-list"></div>
   </section>

@@ -3,10 +3,10 @@
 // 状態
 const state = {
   base: null,          // 選択中の拠点名
-  building: null,      // 選択中の棟オブジェクト（MASTERS.buildingsの要素）
-  cells: new Set(),    // 選択中マス "列|位置" 例 "3|奥"
-  works: new Set(),    // 選択中の作業名（複数可）
-  items: [],           // 追加済みの作業 [{base, building, cells:[{row,pos}], works:[], workDetail}]
+  building: null,      // 選択中の棟オブジェクト
+  cells: new Set(),    // 選択中マス "列|位置" 例 "3|入口側"
+  works: new Set(),    // 選択中の作業（複数可）
+  items: [],           // 追加済みの作業 [{base, building, cells:[], works:[], workDetail}]
   todayWorks: new Map(),// 今日記録済みのマス "拠点|棟|列|位置" → 作業名のSet
   profile: { userId: "", displayName: "テスト利用者" },
   mock: !CONFIG.GAS_URL,
@@ -19,7 +19,7 @@ init();
 async function init() {
   $("date-display").textContent = formatToday() + " の記録";
 
-  // LINE内で開かれた場合は本人情報を取得（未設定ならお試しモード）
+  // LINE内で開かれた場合は本人情報を取得
   if (CONFIG.LIFF_ID && typeof liff !== "undefined") {
     try {
       await liff.init({ liffId: CONFIG.LIFF_ID });
@@ -30,7 +30,7 @@ async function init() {
         liff.login();
         return;
       }
-      // LINE外のブラウザで未ログインの場合は、強制ログインせず「テスト利用者」のまま動かす
+      // LINE外のブラウザで未ログインの場合は「テスト利用者」のまま動かす
     } catch (err) {
       console.warn("LIFF初期化に失敗。テスト利用者として続行します", err);
     }
@@ -43,7 +43,6 @@ async function init() {
   state.base = MASTERS.bases[0];
   renderBases();
   selectBuilding(buildingsOfBase()[0]);
-  renderWorks();
   renderItems();
 
   await loadToday();
@@ -55,16 +54,25 @@ async function init() {
   $("submit").addEventListener("click", submitAll);
 }
 
-// ---------- 描画 ----------
+// ---------- マスタ参照 ----------
 
 function buildingsOfBase() {
   return MASTERS.buildings.filter((b) => b.base === state.base);
 }
 
-// 位置区分（奥/手前）は廃止したが、マスタに定義があれば従う（互換用）
-function positionsOf(b) {
-  return b.positions && b.positions.length ? b.positions : [""];
+function findBuilding(base, name) {
+  return MASTERS.buildings.find((b) => b.base === base && b.name === name);
 }
+
+function positionsOf(b) {
+  return b && b.positions && b.positions.length ? b.positions : [""];
+}
+
+function isFree(b) {
+  return !!(b && b.type === "free");
+}
+
+// ---------- 描画 ----------
 
 function renderBases() {
   const box = $("base-buttons");
@@ -83,7 +91,10 @@ function renderBases() {
 function selectBuilding(building) {
   state.building = building;
   state.cells.clear();
+  state.works.clear();
+  $("work-detail").value = "";
   renderBuildings();
+  renderWorkArea();
   renderGrid();
 }
 
@@ -97,72 +108,114 @@ function renderBuildings() {
   });
 }
 
-// 配置図: 入口から見た向きで表示する。
-// 列が左右に並び、上＝奥・下＝手前。通路は列の間の細い帯。下中央に入口マーク。
-// 16列の棟は横スクロールで全体を見る
+// 作業の選択欄。トマトハウスは共通の作業ボタン、フリー記録場所はよく使う作業＋自由記入
+function renderWorkArea() {
+  const box = $("work-buttons");
+  box.innerHTML = "";
+  const b = state.building;
+  const detail = $("work-detail");
+
+  if (isFree(b)) {
+    (b.quickWorks || []).forEach((w) => appendWorkChip(box, w));
+    detail.hidden = false;
+    detail.placeholder = "やった作業を記入（例: トウモロコシ播種）";
+    return;
+  }
+
+  MASTERS.works.forEach((w) => appendWorkChip(box, w));
+  detail.hidden = !state.works.has("その他");
+  detail.placeholder = "やった作業を記入";
+}
+
+function appendWorkChip(box, w) {
+  const btn = el("button", "btn" + (state.works.has(w) ? " active" : ""), w);
+  btn.addEventListener("click", () => {
+    state.works.has(w) ? state.works.delete(w) : state.works.add(w);
+    if (!isFree(state.building)) {
+      $("work-detail").hidden = !state.works.has("その他");
+    }
+    renderWorkArea();
+  });
+  box.appendChild(btn);
+}
+
+// 配置図: 入口（妻面中央）を左にして、列を横長バーで縦に並べる。
+// バーは「入口側半分／奥側半分」に分かれ、列番号タップで列全体を選択
 function renderGrid() {
   const area = $("grid-area");
   area.innerHTML = "";
   const b = state.building;
   if (!b) return;
 
-  const positions = positionsOf(b);
-  const hasLabels = positions.some((p) => p);
-  const flex = el("div", "grid-flex");
-
-  // 左端: 行ラベル（位置区分がある場合のみ）
-  if (hasLabels) {
-    const labelCol = el("div", "grid-col label-col");
-    labelCol.appendChild(el("div", "col-num", ""));
-    positions.forEach((pos) => labelCol.appendChild(el("div", "row-label", pos)));
-    flex.appendChild(labelCol);
+  if (isFree(b)) {
+    area.appendChild(el("div", "hint", "この場所は列の指定はありません。作業を選んで（または記入して）そのまま追加してください"));
+    return;
   }
 
+  // 一括選択
+  const bulk = el("div", "btn-row bulk-row");
+  const allBtn = el("button", "btn", "すべて選択");
+  allBtn.addEventListener("click", () => {
+    const positions = positionsOf(b);
+    for (let col = 1; col <= b.cols; col++) {
+      positions.forEach((pos) => state.cells.add(col + "|" + pos));
+    }
+    renderGrid();
+  });
+  const clearBtn = el("button", "btn", "選択を解除");
+  clearBtn.addEventListener("click", () => {
+    state.cells.clear();
+    renderGrid();
+  });
+  bulk.appendChild(allBtn);
+  bulk.appendChild(clearBtn);
+  area.appendChild(bulk);
+
+  area.appendChild(el("div", "entrance-left", "🚪 入口（妻面中央）は左です"));
+
+  const positions = positionsOf(b);
+  const wrap = el("div", "bar-grid");
+
+  // ヘッダー（入口側／奥側）
+  const head = el("div", "bar-row bar-head");
+  head.appendChild(el("div", "bar-label-blank", ""));
+  positions.forEach((pos) => head.appendChild(el("div", "bar-htxt", pos)));
+  wrap.appendChild(head);
+
   for (let col = 1; col <= b.cols; col++) {
-    const colDiv = el("div", "grid-col");
-    colDiv.appendChild(el("div", "col-num", String(col)));
+    const row = el("div", "bar-row");
+
+    const lbl = el("button", "bar-label", col + "列");
+    lbl.addEventListener("click", () => {
+      const keys = positions.map((pos) => col + "|" + pos);
+      const allSelected = keys.every((k) => state.cells.has(k));
+      keys.forEach((k) => (allSelected ? state.cells.delete(k) : state.cells.add(k)));
+      renderGrid();
+    });
+    row.appendChild(lbl);
+
     positions.forEach((pos) => {
       const key = col + "|" + pos;
       const doneKey = [state.base, b.name, col, pos].join("|");
       const doneWorks = state.todayWorks.get(doneKey);
-      let cls = "cell";
+      let cls = "bar-cell";
       if (doneWorks) cls += " done";
       if (state.cells.has(key)) cls += " selected";
-      // 記録済みマスには作業の頭文字（収・誘・葉…）を縦に表示
-      const label = doneWorks ? [...doneWorks].map(workAbbr).slice(0, 4).join("\n") : "";
+      const label = doneWorks ? [...doneWorks].map(workAbbr).slice(0, 5).join("・") : "";
       const cell = el("button", cls, label);
       cell.addEventListener("click", () => {
         state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
         renderGrid();
       });
-      colDiv.appendChild(cell);
+      row.appendChild(cell);
     });
-    flex.appendChild(colDiv);
+    wrap.appendChild(row);
 
-    // 通路（両端は1列・それ以外は2列ごと）
     if ((b.aisleAfter || []).includes(col) && col < b.cols) {
-      flex.appendChild(el("div", "aisle-v", ""));
+      wrap.appendChild(el("div", "aisle-h", ""));
     }
   }
-  // 図と入口マークを同じ幅の箱に入れる（横スクロール時も図の中央に入口が来る）
-  const inner = el("div", "grid-inner" + (hasLabels ? "" : " no-labels"));
-  inner.appendChild(flex);
-  inner.appendChild(el("div", "entrance", "▲ 入口（妻面中央）"));
-  area.appendChild(inner);
-}
-
-function renderWorks() {
-  const box = $("work-buttons");
-  box.innerHTML = "";
-  MASTERS.works.forEach((w) => {
-    const btn = el("button", "btn" + (state.works.has(w) ? " active" : ""), w);
-    btn.addEventListener("click", () => {
-      state.works.has(w) ? state.works.delete(w) : state.works.add(w);
-      $("work-detail").hidden = !state.works.has("その他");
-      renderWorks();
-    });
-    box.appendChild(btn);
-  });
+  area.appendChild(wrap);
 }
 
 function renderItems() {
@@ -170,11 +223,12 @@ function renderItems() {
   box.innerHTML = "";
   state.items.forEach((item, i) => {
     const row = el("div", "item");
-    const cellsText = summarizeCells(item.cells);
+    const b = findBuilding(item.base, item.building);
+    const place = item.cells.length > 0 ? " " + summarizeCells(item.cells, positionsOf(b)) : "";
     const worksText = item.works
-      .map((w) => (w === "その他" ? `その他（${item.workDetail}）` : w))
+      .map((w) => (w === "その他" && item.workDetail ? `その他（${item.workDetail}）` : w))
       .join("・");
-    row.appendChild(el("span", "", `${item.building} ${cellsText} / ${worksText}`));
+    row.appendChild(el("span", "", `${item.building}${place} / ${worksText}`));
     const del = el("button", "del", "削除");
     del.addEventListener("click", () => {
       state.items.splice(i, 1);
@@ -187,45 +241,60 @@ function renderItems() {
 
 // ---------- 操作 ----------
 
-// 現在の選択（棟・作業・マス）を作業リストに1件追加する
 function addCurrentItem() {
-  if (state.works.size === 0) {
-    toast("作業を選んでください");
-    return false;
-  }
-  if (!state.building || state.cells.size === 0) {
-    toast("場所をタップで選んでください");
-    return false;
-  }
+  const b = state.building;
+  if (!b) return false;
   const detail = $("work-detail").value.trim();
-  if (state.works.has("その他") && !detail) {
-    toast("「その他」の作業内容を記入してください");
-    return false;
+  let works = [...state.works];
+
+  if (isFree(b)) {
+    if (detail) works.push(detail);
+    if (works.length === 0) {
+      toast("作業を選ぶか記入してください");
+      return false;
+    }
+  } else {
+    if (works.length === 0) {
+      toast("作業を選んでください");
+      return false;
+    }
+    if (state.works.has("その他") && !detail) {
+      toast("「その他」の作業内容を記入してください");
+      return false;
+    }
+    if (state.cells.size === 0) {
+      toast("場所をタップで選んでください");
+      return false;
+    }
   }
-  const cells = [...state.cells].map((key) => {
-    const [row, pos] = key.split("|");
-    return { row: Number(row), pos };
-  });
+
+  const cells = isFree(b)
+    ? []
+    : [...state.cells].map((key) => {
+        const [row, pos] = key.split("|");
+        return { row: Number(row), pos };
+      });
+
   state.items.push({
     base: state.base,
-    building: state.building.name,
+    building: b.name,
     cells,
-    works: [...state.works],
-    workDetail: state.works.has("その他") ? detail : "",
+    works,
+    workDetail: !isFree(b) && state.works.has("その他") ? detail : "",
   });
+
   state.cells.clear();
   state.works.clear();
   $("work-detail").value = "";
-  $("work-detail").hidden = true;
+  renderWorkArea();
   renderGrid();
-  renderWorks();
   renderItems();
   return true;
 }
 
 async function submitAll() {
   // 選択しかけのものがあればリストに入れてから送信
-  if (state.cells.size > 0 || state.works.size > 0) {
+  if (state.cells.size > 0 || state.works.size > 0 || $("work-detail").value.trim()) {
     if (!addCurrentItem()) return;
   }
   if (state.items.length === 0) {
@@ -287,23 +356,16 @@ async function loadToday() {
     const res = await fetch(CONFIG.GAS_URL + "?action=today");
     const data = await res.json();
     if (data.done) {
-      // "拠点|棟|列|位置|作業"
       data.done.forEach((s) => {
         const p = s.split("|");
         add(p.slice(0, 4).join("|"), p[4]);
       });
     } else {
-      // 旧バージョンのGAS（作業名なし）へのフォールバック
       (data.keys || []).forEach((k) => add(k, null));
     }
   } catch (err) {
     console.warn("今日の記録の取得に失敗", err);
   }
-}
-
-// 作業名を1文字の略号にする（マス内表示用）
-function workAbbr(w) {
-  return w === "その他" ? "他" : w.charAt(0);
 }
 
 // お試しモード: ブラウザのlocalStorageに保存（端末内のみ・お試し用）
@@ -313,7 +375,8 @@ function mockSave(payload) {
   const all = JSON.parse(localStorage.getItem(MOCK_KEY) || "[]");
   let saved = 0;
   payload.entries.forEach((en) => {
-    en.cells.forEach((c) => {
+    const cellList = en.cells.length > 0 ? en.cells : [{ row: "", pos: "" }];
+    cellList.forEach((c) => {
       en.works.forEach((w) => {
         all.push({
           date: formatToday(),
@@ -355,23 +418,45 @@ function formatToday() {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-// 連続したマス選択を「3〜5列(奥)」のような短い表記にまとめる
-function summarizeCells(cells) {
-  const byPos = {};
-  cells.forEach((c) => (byPos[c.pos] = byPos[c.pos] || []).push(c.row));
-  return Object.entries(byPos)
-    .map(([pos, rows]) => {
-      rows.sort((a, b) => a - b);
-      const ranges = [];
-      let start = rows[0], prev = rows[0];
-      for (let i = 1; i <= rows.length; i++) {
-        if (rows[i] === prev + 1) { prev = rows[i]; continue; }
-        ranges.push(start === prev ? `${start}` : `${start}〜${prev}`);
-        start = prev = rows[i];
-      }
-      return pos ? `${ranges.join(",")}列(${pos})` : `${ranges.join(",")}列`;
-    })
-    .join(" ");
+function workAbbr(w) {
+  return w === "その他" ? "他" : w.charAt(0);
+}
+
+// 連続したマス選択を短い表記にまとめる。
+// 両方の半分がそろっている列は「3〜5列」、片方だけは「3〜5列(入口側)」
+function summarizeCells(cells, allPositions) {
+  allPositions = allPositions || [""];
+  const byRow = {};
+  cells.forEach((c) => {
+    (byRow[c.row] = byRow[c.row] || new Set()).add(c.pos);
+  });
+  const whole = [];
+  const partial = {};
+  Object.entries(byRow).forEach(([row, set]) => {
+    if (allPositions.length <= 1 || set.size >= allPositions.length) {
+      whole.push(Number(row));
+    } else {
+      set.forEach((pos) => (partial[pos] = partial[pos] || []).push(Number(row)));
+    }
+  });
+  const parts = [];
+  if (whole.length > 0) parts.push(rangesText(whole) + "列");
+  allPositions.forEach((pos) => {
+    if (partial[pos]) parts.push(rangesText(partial[pos]) + "列(" + pos + ")");
+  });
+  return parts.join(" ");
+}
+
+function rangesText(rows) {
+  rows.sort((a, b) => a - b);
+  const ranges = [];
+  let start = rows[0], prev = rows[0];
+  for (let i = 1; i <= rows.length; i++) {
+    if (rows[i] === prev + 1) { prev = rows[i]; continue; }
+    ranges.push(start === prev ? `${start}` : `${start}〜${prev}`);
+    start = prev = rows[i];
+  }
+  return ranges.join(",");
 }
 
 let toastTimer = null;

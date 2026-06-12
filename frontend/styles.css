@@ -222,16 +222,103 @@ h2 {
   border-bottom: 1px dashed #eee;
 }
 
-/* 作業状況ヒートマップ（最後にやってからの日数） */
-.cell.age0 { background: #a5d6a7; border-color: #81c784; }
-.cell.age1 { background: #fff59d; border-color: #fdd835; }
-.cell.age2 { background: #ffcc80; border-color: #ffb74d; }
-.cell.age3 { background: #ef9a9a; border-color: #e57373; }
-/* 選択中の見た目はヒートマップ色より優先する */
-.cell.selected {
+/* ===== 配置図（横長バー方式・入口が左） ===== */
+.bulk-row {
+  margin-bottom: 8px;
+}
+.bulk-row .btn {
+  flex: 0 1 auto;
+  min-height: 40px;
+  font-size: 0.9rem;
+}
+.entrance-left {
+  color: #b08d57;
+  font-weight: bold;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}
+.bar-grid {
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px;
+}
+.bar-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+  align-items: stretch;
+}
+.bar-head {
+  margin-bottom: 2px;
+}
+.bar-htxt {
+  flex: 1 1 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #888;
+}
+.bar-label-blank {
+  flex: 0 0 52px;
+}
+.bar-label {
+  flex: 0 0 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: #444;
+  background: #ececec;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+.bar-cell {
+  flex: 1 1 0;
+  min-height: 44px;
+  border: 2px solid #ccc;
+  border-radius: 6px;
+  background: #fafafa;
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+  font-weight: bold;
+  color: #1a1a1a;
+}
+.bar-cell.done {
+  background: #c5c5c5;
+  border-color: #aaa;
+}
+.bar-cell.filled {
   background: #2e7d32;
   border-color: #1b5e20;
   color: #fff;
+}
+/* 通路（列の間の横帯） */
+.aisle-h {
+  height: 6px;
+  background: #e8d9bd;
+  border-radius: 3px;
+  margin: 2px 0 6px 56px;
+}
+
+/* 作業状況ヒートマップ（最後にやってからの日数・薄い青→赤の8段階） */
+.bar-cell.age0 { background: #d6eaf8; border-color: #aed6f1; }
+.bar-cell.age1 { background: #aed6f1; border-color: #85c1e9; }
+.bar-cell.age2 { background: #a9dfbf; border-color: #7dcea0; }
+.bar-cell.age3 { background: #f9e79f; border-color: #f7dc6f; }
+.bar-cell.age4 { background: #f8c471; border-color: #f5b041; }
+.bar-cell.age5 { background: #e59866; border-color: #dc7633; }
+.bar-cell.age6 { background: #ec7063; border-color: #e74c3c; }
+.bar-cell.age7 { background: #c0392b; border-color: #a93226; color: #fff; }
+/* 選択中の見た目はヒートマップ色より優先する */
+.bar-cell.selected {
+  background: #2e7d32;
+  border-color: #1b5e20;
+  color: #fff;
+  outline: 2px solid #fff;
+  outline-offset: -5px;
 }
 
 .entrance {

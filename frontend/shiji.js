@@ -1,17 +1,19 @@
 "use strict";
 
 // 指示作成画面（社長用）
-// 作業を選ぶと配置図が「最後にその作業をしてから何日たったか」のヒートマップになる
+// 作業を選ぶと配置図が「最後にその作業をしてから何日たったか」のヒートマップになる。
+// 文面はLINEに直接送信（グループから開いた場合）または共有画面・コピペで投稿する。
 
 const state = {
-  staff: [],          // 宛先候補 {name, userId}
-  staffSel: null,     // 選択中の宛先
+  staff: [],            // 宛先候補 {name, userId}
+  staffSel: new Set(),  // 選択中の宛先（複数可・nameのSet）
   base: MASTERS.bases[0],
-  building: null,     // 選択中の棟オブジェクト
-  work: null,         // 選択中の作業（単一）
-  cells: new Set(),   // 選択中マス "列|位置"
-  blocks: [],         // 宛先ごとの指示 {name, userId, note, tasks:[{base,building,work,workDetail,cells:[]}]}
-  status: new Map(),  // "拠点|棟|列|位置|作業" → 最後にやった日 "yyyy-MM-dd"
+  building: null,
+  work: null,           // 選択中の作業（単一）
+  cells: new Set(),     // 選択中マス "列|位置"
+  blocks: [],           // 宛先ごとの指示 {name, userId, note, tasks:[]}
+  status: new Map(),    // "拠点|棟|列|位置|作業" → 最後にやった日
+  liffReady: false,
   mock: !CONFIG.GAS_URL,
 };
 
@@ -22,9 +24,17 @@ const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", 
 init();
 
 async function init() {
+  if (CONFIG.LIFF_ID && typeof liff !== "undefined") {
+    try {
+      await liff.init({ liffId: CONFIG.LIFF_ID });
+      state.liffReady = true;
+    } catch (err) {
+      console.warn("LIFF初期化に失敗（コピペ運用は可能）", err);
+    }
+  }
+
   renderBases();
   selectBuilding(buildingsOfBase()[0]);
-  renderWorks();
   renderStaff();
   renderBlocks();
 
@@ -34,14 +44,15 @@ async function init() {
     if (!state.staff.some((s) => s.name === name)) {
       state.staff.push({ name, userId: "" });
     }
-    state.staffSel = state.staff.find((s) => s.name === name);
+    state.staffSel.add(name);
     $("manual-name").value = "";
     renderStaff();
   });
   $("add-task").addEventListener("click", addTask);
   $("preview-btn").addEventListener("click", showPreview);
+  $("send-btn").addEventListener("click", sendToLine);
   $("copy-btn").addEventListener("click", copyPreview);
-  $("save-btn").addEventListener("click", save);
+  $("save-btn").addEventListener("click", () => save(false));
 
   await loadStaff();
   renderStaff();
@@ -76,7 +87,7 @@ async function loadStatus() {
     return;
   }
   try {
-    const res = await fetch(CONFIG.GAS_URL + "?action=status&days=14");
+    const res = await fetch(CONFIG.GAS_URL + "?action=status&days=30");
     const data = await res.json();
     Object.entries(data.status || {}).forEach(([k, v]) => state.status.set(k, v));
   } catch (err) {
@@ -84,16 +95,21 @@ async function loadStatus() {
   }
 }
 
-// ---------- 描画 ----------
+// ---------- マスタ参照 ----------
 
 function buildingsOfBase() {
   return MASTERS.buildings.filter((b) => b.base === state.base);
 }
 
-// 位置区分（奥/手前）は廃止したが、マスタに定義があれば従う（互換用）
 function positionsOf(b) {
-  return b.positions && b.positions.length ? b.positions : [""];
+  return b && b.positions && b.positions.length ? b.positions : [""];
 }
+
+function isFree(b) {
+  return !!(b && b.type === "free");
+}
+
+// ---------- 描画 ----------
 
 function renderStaff() {
   const box = $("staff-buttons");
@@ -103,9 +119,9 @@ function renderStaff() {
     return;
   }
   state.staff.forEach((s) => {
-    const btn = el("button", "btn" + (state.staffSel === s ? " active" : ""), s.name);
+    const btn = el("button", "btn" + (state.staffSel.has(s.name) ? " active" : ""), s.name);
     btn.addEventListener("click", () => {
-      state.staffSel = state.staffSel === s ? null : s;
+      state.staffSel.has(s.name) ? state.staffSel.delete(s.name) : state.staffSel.add(s.name);
       renderStaff();
     });
     box.appendChild(btn);
@@ -129,7 +145,10 @@ function renderBases() {
 function selectBuilding(building) {
   state.building = building;
   state.cells.clear();
+  state.work = null;
+  $("work-detail").value = "";
   renderBuildings();
+  renderWorkArea();
   renderGrid();
 }
 
@@ -143,32 +162,43 @@ function renderBuildings() {
   });
 }
 
-function renderWorks() {
+function renderWorkArea() {
   const box = $("work-buttons");
   box.innerHTML = "";
-  MASTERS.works.forEach((w) => {
+  const b = state.building;
+  const detail = $("work-detail");
+
+  const works = isFree(b) ? b.quickWorks || [] : MASTERS.works;
+  works.forEach((w) => {
     const btn = el("button", "btn" + (w === state.work ? " active" : ""), w);
     btn.addEventListener("click", () => {
       state.work = w === state.work ? null : w;
-      $("work-detail").hidden = state.work !== "その他";
-      renderWorks();
+      if (!isFree(b)) detail.hidden = state.work !== "その他";
+      renderWorkArea();
       renderGrid(); // 選んだ作業のヒートマップに切り替える
     });
     box.appendChild(btn);
   });
+
+  if (isFree(b)) {
+    detail.hidden = false;
+    detail.placeholder = "依頼する作業を記入（例: トウモロコシ播種）";
+  } else {
+    detail.placeholder = "作業内容を記入";
+  }
 }
 
-// マスの色と表示（選択中の作業について、最後にやってから何日か）
+// 選択中の作業について、最後にやってからの日数 → 0〜6日とそれ以上の8段階
 function cellHeat(col, pos) {
   if (!state.work || state.work === "その他") return { cls: "", label: "" };
   const key = [state.base, state.building.name, col, pos, state.work].join("|");
   const last = state.status.get(key);
-  if (!last) return { cls: " age3", label: "" }; // 直近2週間に記録なし＝要注意扱い
+  if (!last) return { cls: " age7", label: "" };
   const days = Math.round(
     (new Date(formatToday() + "T00:00:00") - new Date(last + "T00:00:00")) / MS_DAY
   );
-  const cls = days <= 2 ? " age0" : days <= 4 ? " age1" : days <= 6 ? " age2" : " age3";
-  return { cls, label: String(days) };
+  const step = days >= 7 ? 7 : Math.max(0, days);
+  return { cls: " age" + step, label: days >= 7 ? "7+" : String(days) };
 }
 
 function renderGrid() {
@@ -177,41 +207,70 @@ function renderGrid() {
   const b = state.building;
   if (!b) return;
 
-  const positions = positionsOf(b);
-  const hasLabels = positions.some((p) => p);
-  const flex = el("div", "grid-flex");
-  if (hasLabels) {
-    const labelCol = el("div", "grid-col label-col");
-    labelCol.appendChild(el("div", "col-num", ""));
-    positions.forEach((pos) => labelCol.appendChild(el("div", "row-label", pos)));
-    flex.appendChild(labelCol);
+  if (isFree(b)) {
+    area.appendChild(el("div", "hint", "この場所は列の指定はありません。作業を選んで（または記入して）そのまま追加してください"));
+    return;
   }
 
+  const bulk = el("div", "btn-row bulk-row");
+  const allBtn = el("button", "btn", "すべて選択");
+  allBtn.addEventListener("click", () => {
+    const positions = positionsOf(b);
+    for (let col = 1; col <= b.cols; col++) {
+      positions.forEach((pos) => state.cells.add(col + "|" + pos));
+    }
+    renderGrid();
+  });
+  const clearBtn = el("button", "btn", "選択を解除");
+  clearBtn.addEventListener("click", () => {
+    state.cells.clear();
+    renderGrid();
+  });
+  bulk.appendChild(allBtn);
+  bulk.appendChild(clearBtn);
+  area.appendChild(bulk);
+
+  area.appendChild(el("div", "entrance-left", "🚪 入口（妻面中央）は左です"));
+
+  const positions = positionsOf(b);
+  const wrap = el("div", "bar-grid");
+
+  const head = el("div", "bar-row bar-head");
+  head.appendChild(el("div", "bar-label-blank", ""));
+  positions.forEach((pos) => head.appendChild(el("div", "bar-htxt", pos)));
+  wrap.appendChild(head);
+
   for (let col = 1; col <= b.cols; col++) {
-    const colDiv = el("div", "grid-col");
-    colDiv.appendChild(el("div", "col-num", String(col)));
+    const row = el("div", "bar-row");
+
+    const lbl = el("button", "bar-label", col + "列");
+    lbl.addEventListener("click", () => {
+      const keys = positions.map((pos) => col + "|" + pos);
+      const allSelected = keys.every((k) => state.cells.has(k));
+      keys.forEach((k) => (allSelected ? state.cells.delete(k) : state.cells.add(k)));
+      renderGrid();
+    });
+    row.appendChild(lbl);
+
     positions.forEach((pos) => {
       const key = col + "|" + pos;
       const heat = cellHeat(col, pos);
-      let cls = "cell" + heat.cls;
+      let cls = "bar-cell" + heat.cls;
       if (state.cells.has(key)) cls += " selected";
       const cell = el("button", cls, heat.label);
       cell.addEventListener("click", () => {
         state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
         renderGrid();
       });
-      colDiv.appendChild(cell);
+      row.appendChild(cell);
     });
-    flex.appendChild(colDiv);
+    wrap.appendChild(row);
+
     if ((b.aisleAfter || []).includes(col) && col < b.cols) {
-      flex.appendChild(el("div", "aisle-v", ""));
+      wrap.appendChild(el("div", "aisle-h", ""));
     }
   }
-
-  const inner = el("div", "grid-inner" + (hasLabels ? "" : " no-labels"));
-  inner.appendChild(flex);
-  inner.appendChild(el("div", "entrance", "▲ 入口（妻面中央）"));
-  area.appendChild(inner);
+  area.appendChild(wrap);
 }
 
 function renderBlocks() {
@@ -256,51 +315,69 @@ function renderBlocks() {
 // ---------- 操作 ----------
 
 function addTask() {
-  if (!state.staffSel) {
+  if (state.staffSel.size === 0) {
     toast("宛先を選んでください");
     return;
   }
-  if (!state.work) {
-    toast("作業を選んでください");
-    return;
-  }
+  const b = state.building;
   const detail = $("work-detail").value.trim();
-  if (state.work === "その他" && !detail) {
-    toast("「その他」の作業内容を記入してください");
-    return;
-  }
-  const cells = [...state.cells].map((key) => {
-    const [row, pos] = key.split("|");
-    return { row: Number(row), pos };
-  });
+  let work = state.work;
+  let workDetail = "";
 
-  let block = state.blocks.find((b) => b.name === state.staffSel.name);
-  if (!block) {
-    block = { name: state.staffSel.name, userId: state.staffSel.userId || "", note: "", tasks: [] };
-    state.blocks.push(block);
+  if (isFree(b)) {
+    if (!work && detail) work = detail;
+    if (!work) {
+      toast("作業を選ぶか記入してください");
+      return;
+    }
+  } else {
+    if (!work) {
+      toast("作業を選んでください");
+      return;
+    }
+    if (work === "その他") {
+      if (!detail) {
+        toast("「その他」の作業内容を記入してください");
+        return;
+      }
+      workDetail = detail;
+    }
   }
-  block.tasks.push({
-    base: state.base,
-    building: state.building.name,
-    work: state.work,
-    workDetail: state.work === "その他" ? detail : "",
-    cells,
+
+  const cells = isFree(b)
+    ? []
+    : [...state.cells].map((key) => {
+        const [row, pos] = key.split("|");
+        return { row: Number(row), pos };
+      });
+
+  const task = { base: state.base, building: b.name, work, workDetail, cells };
+
+  // 選んだ宛先それぞれに同じタスクを追加する
+  state.staffSel.forEach((name) => {
+    const s = state.staff.find((x) => x.name === name);
+    let block = state.blocks.find((x) => x.name === name);
+    if (!block) {
+      block = { name, userId: (s && s.userId) || "", note: "", tasks: [] };
+      state.blocks.push(block);
+    }
+    block.tasks.push({ ...task, cells: task.cells.map((c) => ({ ...c })) });
   });
 
   state.cells.clear();
   state.work = null;
   $("work-detail").value = "";
-  $("work-detail").hidden = true;
-  renderWorks();
+  renderWorkArea();
   renderGrid();
   renderBlocks();
   toast("指示リストに追加しました");
 }
 
 function taskText(t) {
-  const loc = t.base === "平川" ? "平川" : t.base + t.building;
+  const b = MASTERS.buildings.find((x) => x.base === t.base && x.name === t.building);
+  const loc = t.base === "平川" && t.building === "ハウス" ? "平川" : t.base + t.building;
   const work = t.work === "その他" ? t.workDetail : t.work;
-  const place = t.cells.length > 0 ? "（" + summarizeCells(t.cells) + "）" : "";
+  const place = t.cells.length > 0 ? "（" + summarizeCells(t.cells, positionsOf(b)) + "）" : "";
   return loc + " " + work + place;
 }
 
@@ -328,8 +405,49 @@ function showPreview() {
   }
   $("preview").textContent = buildMessage();
   $("preview").hidden = false;
+  $("send-btn").hidden = false;
   $("copy-btn").hidden = false;
   $("save-btn").hidden = false;
+}
+
+// LINEへワンボタン送信。
+// グループ・トークから開いた場合は本人名義でそのトークへ直接投稿、
+// それ以外では送信先を選ぶLINEの共有画面を出す。送信成功時はシートにも自動保存する。
+async function sendToLine() {
+  if (state.blocks.length === 0) {
+    toast("指示リストが空です");
+    return;
+  }
+  const text = buildMessage();
+  if (!state.liffReady) {
+    toast("LINE連携が使えない開き方です。「文面をコピー」で貼り付けてください");
+    return;
+  }
+  try {
+    if (liff.isInClient()) {
+      const ctx = liff.getContext();
+      if (ctx && ["group", "room", "utou"].includes(ctx.type)) {
+        await liff.sendMessages([{ type: "text", text }]);
+        toast("✅ このトークに送信しました");
+        save(true);
+        return;
+      }
+    }
+    if (liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
+      const res = await liff.shareTargetPicker([{ type: "text", text }]);
+      if (res) {
+        toast("✅ 送信しました");
+        save(true);
+      } else {
+        toast("送信をキャンセルしました");
+      }
+      return;
+    }
+    toast("この開き方では直接送信できません。「文面をコピー」で貼り付けてください");
+  } catch (err) {
+    console.error(err);
+    toast("⚠ 送信できませんでした。「文面をコピー」で貼り付けてください");
+  }
 }
 
 async function copyPreview() {
@@ -341,7 +459,7 @@ async function copyPreview() {
   }
 }
 
-async function save() {
+async function save(silent) {
   const payload = {
     type: "shiji",
     date: formatToday(),
@@ -350,18 +468,21 @@ async function save() {
       name: b.name,
       userId: b.userId,
       note: b.note.trim(),
-      tasks: b.tasks.map((t) => ({
-        base: t.base,
-        building: t.building,
-        work: t.work,
-        workDetail: t.workDetail,
-        place: t.cells.length > 0 ? summarizeCells(t.cells) : "",
-        cells: t.cells,
-      })),
+      tasks: b.tasks.map((t) => {
+        const bld = MASTERS.buildings.find((x) => x.base === t.base && x.name === t.building);
+        return {
+          base: t.base,
+          building: t.building,
+          work: t.work,
+          workDetail: t.workDetail,
+          place: t.cells.length > 0 ? summarizeCells(t.cells, positionsOf(bld)) : "",
+          cells: t.cells,
+        };
+      }),
     })),
   };
   if (state.mock) {
-    toast("お試しモードのため保存先がありません");
+    if (!silent) toast("お試しモードのため保存先がありません");
     return;
   }
   $("save-btn").disabled = true;
@@ -373,10 +494,10 @@ async function save() {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || "GAS error");
-    toast(`✅ 保存しました（${data.saved}件）`);
+    if (!silent) toast(`✅ 保存しました（${data.saved}件）`);
   } catch (err) {
     console.error(err);
-    toast("⚠ 保存に失敗しました。もう一度お試しください");
+    toast("⚠ シートへの保存に失敗しました");
   } finally {
     $("save-btn").disabled = false;
   }
@@ -398,22 +519,40 @@ function formatToday() {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-function summarizeCells(cells) {
-  const byPos = {};
-  cells.forEach((c) => (byPos[c.pos] = byPos[c.pos] || []).push(c.row));
-  return Object.entries(byPos)
-    .map(([pos, rows]) => {
-      rows.sort((a, b) => a - b);
-      const ranges = [];
-      let start = rows[0], prev = rows[0];
-      for (let i = 1; i <= rows.length; i++) {
-        if (rows[i] === prev + 1) { prev = rows[i]; continue; }
-        ranges.push(start === prev ? `${start}` : `${start}〜${prev}`);
-        start = prev = rows[i];
-      }
-      return pos ? `${ranges.join(",")}列(${pos})` : `${ranges.join(",")}列`;
-    })
-    .join(" ");
+function summarizeCells(cells, allPositions) {
+  allPositions = allPositions || [""];
+  const byRow = {};
+  cells.forEach((c) => {
+    (byRow[c.row] = byRow[c.row] || new Set()).add(c.pos);
+  });
+  const whole = [];
+  const partial = {};
+  Object.entries(byRow).forEach(([row, set]) => {
+    if (allPositions.length <= 1 || set.size >= allPositions.length) {
+      whole.push(Number(row));
+    } else {
+      set.forEach((pos) => (partial[pos] = partial[pos] || []).push(Number(row)));
+    }
+  });
+  const parts = [];
+  if (whole.length > 0) parts.push(rangesText(whole) + "列");
+  const posOrder = [...allPositions, ...Object.keys(partial).filter((p) => !allPositions.includes(p))];
+  posOrder.forEach((pos) => {
+    if (partial[pos]) parts.push(rangesText(partial[pos]) + "列(" + pos + ")");
+  });
+  return parts.join(" ");
+}
+
+function rangesText(rows) {
+  rows.sort((a, b) => a - b);
+  const ranges = [];
+  let start = rows[0], prev = rows[0];
+  for (let i = 1; i <= rows.length; i++) {
+    if (rows[i] === prev + 1) { prev = rows[i]; continue; }
+    ranges.push(start === prev ? `${start}` : `${start}〜${prev}`);
+    start = prev = rows[i];
+  }
+  return ranges.join(",");
 }
 
 let toastTimer = null;
