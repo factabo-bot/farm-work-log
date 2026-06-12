@@ -40,28 +40,46 @@ function shiftDate(days) {
   refresh();
 }
 
+// 連打や通信の遅延で応答が前後しても、最後に要求した日付の結果だけを画面に反映する
+let loadSeq = 0;
+
 async function refresh() {
-  await loadRecords();
+  const seq = ++loadSeq;
+  $("list-title").textContent = "記録一覧（読み込み中…）";
+  const result = await fetchRecordsFor(state.date);
+  if (seq !== loadSeq) return; // 古いリクエストの結果は捨てる
+  state.records = result.records;
   renderGrid();
   renderList();
+  if (!result.ok) {
+    $("list-title").textContent = "記録一覧（読み込み失敗）";
+    $("record-list").innerHTML = "";
+    $("record-list").appendChild(
+      el("div", "hint", "通信に失敗しました。日付を切り替え直すか、ページを再読み込みしてください")
+    );
+  }
 }
 
 // ---------- データ取得 ----------
 
-async function loadRecords() {
-  state.records = [];
+async function fetchRecordsFor(date) {
   if (state.mock) {
     const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
-    state.records = all.filter((r) => r.date === state.date);
-    return;
+    return { ok: true, records: all.filter((r) => r.date === date) };
   }
-  try {
-    const res = await fetch(CONFIG.GAS_URL + "?action=records&date=" + state.date);
-    const data = await res.json();
-    state.records = data.records || [];
-  } catch (err) {
-    console.warn("記録の取得に失敗", err);
+  // 失敗したら1回だけ再試行する
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(
+        CONFIG.GAS_URL + "?action=records&date=" + date + "&_=" + Date.now()
+      );
+      const data = await res.json();
+      return { ok: true, records: data.records || [] };
+    } catch (err) {
+      console.warn("記録の取得に失敗（試行" + attempt + "）", err);
+    }
   }
+  return { ok: false, records: [] };
 }
 
 // ---------- 描画 ----------
