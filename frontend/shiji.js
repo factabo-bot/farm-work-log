@@ -449,16 +449,21 @@ async function sendToLine() {
     toast("LINE連携が使えない開き方です。「文面をコピー」で貼り付けてください");
     return;
   }
-  try {
-    if (liff.isInClient()) {
-      const ctx = liff.getContext();
-      if (ctx && ["group", "room", "utou"].includes(ctx.type)) {
+  // まずは「開いているトークへ直接投稿」を試し、ダメなら送信先を選ぶ共有画面に切り替える
+  if (liff.isInClient()) {
+    const ctx = liff.getContext();
+    if (ctx && ["group", "room", "utou"].includes(ctx.type)) {
+      try {
         await liff.sendMessages([{ type: "text", text }]);
         toast("✅ このトークに送信しました");
         save(true);
         return;
+      } catch (err) {
+        console.warn("sendMessages失敗。共有画面に切り替えます", err);
       }
     }
+  }
+  try {
     if (liff.isApiAvailable && liff.isApiAvailable("shareTargetPicker")) {
       const res = await liff.shareTargetPicker([{ type: "text", text }]);
       if (res) {
@@ -469,10 +474,11 @@ async function sendToLine() {
       }
       return;
     }
-    toast("この開き方では直接送信できません。「文面をコピー」で貼り付けてください");
+    toast("直接送信には権限の許可が必要です。LIFFを開き直して同意するか、「文面をコピー」で貼り付けてください");
   } catch (err) {
     console.error(err);
-    toast("⚠ 送信できませんでした。「文面をコピー」で貼り付けてください");
+    const msg = (err && (err.message || err.code)) || "不明なエラー";
+    toast(`⚠ 送信できませんでした（${msg}）。「文面をコピー」をお使いください`);
   }
 }
 
