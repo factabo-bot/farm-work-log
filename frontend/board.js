@@ -143,6 +143,20 @@ function isFree(b) {
   return !!(b && b.type === "free");
 }
 
+// 絞り込みに使う作業一覧（棟限定の作業＝出荷調整なども含める）
+function filterWorks() {
+  const list = [...MASTERS.works];
+  MASTERS.buildings.forEach((b) => {
+    (b.extraWorks || []).forEach((w) => {
+      if (!list.includes(w)) {
+        const idx = list.indexOf("その他");
+        list.splice(idx < 0 ? list.length : idx, 0, w);
+      }
+    });
+  });
+  return list;
+}
+
 // ---------- 描画 ----------
 
 function renderModes() {
@@ -197,7 +211,7 @@ function renderWorkFilter() {
     });
     box.appendChild(all);
   }
-  MASTERS.works.forEach((w) => {
+  filterWorks().forEach((w) => {
     const btn = el("button", "btn" + (w === state.workFilter ? " active" : ""), w);
     btn.addEventListener("click", () => {
       if (state.mode === "week") {
@@ -259,11 +273,6 @@ function renderGrid() {
   const worksMap = state.mode === "day" ? cellWorksMap() : null;
   const wrap = el("div", "bar-grid");
 
-  const head = el("div", "bar-row bar-head");
-  head.appendChild(el("div", "bar-label-blank", ""));
-  positions.forEach((pos) => head.appendChild(el("div", "bar-htxt", pos)));
-  wrap.appendChild(head);
-
   for (let col = 1; col <= b.cols; col++) {
     const row = el("div", "bar-row");
     row.appendChild(el("div", "bar-label", col + "列"));
@@ -283,7 +292,9 @@ function renderGrid() {
       row.appendChild(el("div", cls, label));
     });
     wrap.appendChild(row);
-    if ((b.aisleAfter || []).includes(col) && col < b.cols) {
+    if (b.centerAfter === col && col < b.cols) {
+      wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
+    } else if ((b.aisleAfter || []).includes(col) && col < b.cols) {
       wrap.appendChild(el("div", "aisle-h", ""));
     }
   }

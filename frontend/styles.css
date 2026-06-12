@@ -129,6 +129,28 @@ h2 {
   border-radius: 3px;
   margin-top: 16px;
 }
+/* モード切替ナビ（3画面共通・同じ並び） */
+.mode-nav {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.mode-nav a {
+  flex: 1;
+  text-align: center;
+  padding: 10px 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 0.95rem;
+}
+.mode-nav a.current {
+  background: #fff;
+  color: #2e7d32;
+}
+
 /* 進捗ボード用 */
 .header-link {
   color: #fff;
@@ -316,6 +338,20 @@ h2 {
   height: 6px;
   background: #e8d9bd;
   border-radius: 3px;
+  margin: 2px 0 6px 56px;
+}
+/* 中央の柱＋通路（左右一括選択の境界） */
+.center-aisle {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #d7ccc8;
+  color: #5d4037;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 4px;
+  border-radius: 4px;
   margin: 2px 0 6px 56px;
 }
 

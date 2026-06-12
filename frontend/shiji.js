@@ -109,6 +109,19 @@ function isFree(b) {
   return !!(b && b.type === "free");
 }
 
+// その棟で選べる作業一覧（extraWorksは「その他」の手前に入る）
+function buildingWorks(b) {
+  if (isFree(b)) return b.quickWorks || [];
+  const list = [...MASTERS.works];
+  (b.extraWorks || []).forEach((w) => {
+    if (!list.includes(w)) {
+      const idx = list.indexOf("その他");
+      list.splice(idx < 0 ? list.length : idx, 0, w);
+    }
+  });
+  return list;
+}
+
 // ---------- 描画 ----------
 
 function renderStaff() {
@@ -168,8 +181,7 @@ function renderWorkArea() {
   const b = state.building;
   const detail = $("work-detail");
 
-  const works = isFree(b) ? b.quickWorks || [] : MASTERS.works;
-  works.forEach((w) => {
+  buildingWorks(b).forEach((w) => {
     const btn = el("button", "btn" + (w === state.work ? " active" : ""), w);
     btn.addEventListener("click", () => {
       state.work = w === state.work ? null : w;
@@ -190,7 +202,13 @@ function renderWorkArea() {
 
 // 選択中の作業について、最後にやってからの日数 → 0〜6日とそれ以上の8段階
 function cellHeat(col, pos) {
-  if (!state.work || state.work === "その他") return { cls: "", label: "" };
+  if (
+    !state.work ||
+    state.work === "その他" ||
+    (MASTERS.noPlaceWorks || []).includes(state.work)
+  ) {
+    return { cls: "", label: "" };
+  }
   const key = [state.base, state.building.name, col, pos, state.work].join("|");
   const last = state.status.get(key);
   if (!last) return { cls: " age7", label: "" };
@@ -212,15 +230,25 @@ function renderGrid() {
     return;
   }
 
-  const bulk = el("div", "btn-row bulk-row");
-  const allBtn = el("button", "btn", "すべて選択");
-  allBtn.addEventListener("click", () => {
-    const positions = positionsOf(b);
-    for (let col = 1; col <= b.cols; col++) {
+  // 一括選択（中央通路がある棟は左右半分も選べる）
+  const positions = positionsOf(b);
+  const selectRange = (from, to) => {
+    for (let col = from; col <= to; col++) {
       positions.forEach((pos) => state.cells.add(col + "|" + pos));
     }
     renderGrid();
-  });
+  };
+  const bulk = el("div", "btn-row bulk-row");
+  if (b.centerAfter) {
+    const left = el("button", "btn", `左半分（1〜${b.centerAfter}列）`);
+    left.addEventListener("click", () => selectRange(1, b.centerAfter));
+    const right = el("button", "btn", `右半分（${b.centerAfter + 1}〜${b.cols}列）`);
+    right.addEventListener("click", () => selectRange(b.centerAfter + 1, b.cols));
+    bulk.appendChild(left);
+    bulk.appendChild(right);
+  }
+  const allBtn = el("button", "btn", "すべて選択");
+  allBtn.addEventListener("click", () => selectRange(1, b.cols));
   const clearBtn = el("button", "btn", "選択を解除");
   clearBtn.addEventListener("click", () => {
     state.cells.clear();
@@ -230,13 +258,7 @@ function renderGrid() {
   bulk.appendChild(clearBtn);
   area.appendChild(bulk);
 
-  const positions = positionsOf(b);
   const wrap = el("div", "bar-grid");
-
-  const head = el("div", "bar-row bar-head");
-  head.appendChild(el("div", "bar-label-blank", ""));
-  positions.forEach((pos) => head.appendChild(el("div", "bar-htxt", pos)));
-  wrap.appendChild(head);
 
   for (let col = 1; col <= b.cols; col++) {
     const row = el("div", "bar-row");
@@ -264,7 +286,9 @@ function renderGrid() {
     });
     wrap.appendChild(row);
 
-    if ((b.aisleAfter || []).includes(col) && col < b.cols) {
+    if (b.centerAfter === col && col < b.cols) {
+      wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
+    } else if ((b.aisleAfter || []).includes(col) && col < b.cols) {
       wrap.appendChild(el("div", "aisle-h", ""));
     }
   }
@@ -283,7 +307,7 @@ function renderBlocks() {
     const card = el("div", "block-card");
 
     const head = el("div", "block-head");
-    head.appendChild(el("span", "", "@" + block.name));
+    head.appendChild(el("span", "", block.names.map((n) => "@" + n).join(" ")));
     const delBlock = el("button", "del", "削除");
     delBlock.addEventListener("click", () => {
       state.blocks.splice(bi, 1);
@@ -356,16 +380,15 @@ function addTask() {
 
   const task = { base: state.base, building: b.name, work, workDetail, cells };
 
-  // 選んだ宛先それぞれに同じタスクを追加する
-  state.staffSel.forEach((name) => {
-    const s = state.staff.find((x) => x.name === name);
-    let block = state.blocks.find((x) => x.name === name);
-    if (!block) {
-      block = { name, userId: (s && s.userId) || "", note: "", tasks: [] };
-      state.blocks.push(block);
-    }
-    block.tasks.push({ ...task, cells: task.cells.map((c) => ({ ...c })) });
-  });
+  // 選んだ宛先の組み合わせで1ブロックにまとめる（備考も共通で1つ）
+  const names = [...state.staffSel].sort();
+  const key = names.join("、");
+  let block = state.blocks.find((x) => x.key === key);
+  if (!block) {
+    block = { key, names, note: "", tasks: [] };
+    state.blocks.push(block);
+  }
+  block.tasks.push(task);
 
   state.cells.clear();
   state.work = null;
@@ -391,7 +414,7 @@ function buildMessage() {
     lines.push(comment, "");
   }
   state.blocks.forEach((block) => {
-    lines.push("@" + block.name);
+    lines.push(block.names.map((n) => "@" + n).join(" "));
     block.tasks.forEach((t, i) => {
       lines.push((CIRCLED[i] || i + 1 + ".") + " " + taskText(t));
     });
@@ -467,22 +490,28 @@ async function save(silent) {
     type: "shiji",
     date: formatToday(),
     comment: $("comment").value.trim(),
-    blocks: state.blocks.map((b) => ({
-      name: b.name,
-      userId: b.userId,
-      note: b.note.trim(),
-      tasks: b.tasks.map((t) => {
-        const bld = MASTERS.buildings.find((x) => x.base === t.base && x.name === t.building);
+    // タスクシートには宛先1人ずつに展開して保存する
+    blocks: state.blocks.flatMap((b) =>
+      b.names.map((name) => {
+        const s = state.staff.find((x) => x.name === name);
         return {
-          base: t.base,
-          building: t.building,
-          work: t.work,
-          workDetail: t.workDetail,
-          place: t.cells.length > 0 ? summarizeCells(t.cells, positionsOf(bld)) : "",
-          cells: t.cells,
+          name,
+          userId: (s && s.userId) || "",
+          note: b.note.trim(),
+          tasks: b.tasks.map((t) => {
+            const bld = MASTERS.buildings.find((x) => x.base === t.base && x.name === t.building);
+            return {
+              base: t.base,
+              building: t.building,
+              work: t.work,
+              workDetail: t.workDetail,
+              place: t.cells.length > 0 ? summarizeCells(t.cells, positionsOf(bld)) : "",
+              cells: t.cells,
+            };
+          }),
         };
-      }),
-    })),
+      })
+    ),
   };
   if (state.mock) {
     if (!silent) toast("お試しモードのため保存先がありません");

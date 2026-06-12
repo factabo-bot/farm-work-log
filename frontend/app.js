@@ -72,6 +72,24 @@ function isFree(b) {
   return !!(b && b.type === "free");
 }
 
+// その棟で選べる作業一覧（extraWorksは「その他」の手前に入る）
+function buildingWorks(b) {
+  if (isFree(b)) return b.quickWorks || [];
+  const list = [...MASTERS.works];
+  (b.extraWorks || []).forEach((w) => {
+    if (!list.includes(w)) {
+      const idx = list.indexOf("その他");
+      list.splice(idx < 0 ? list.length : idx, 0, w);
+    }
+  });
+  return list;
+}
+
+// 場所（列）の指定が要らない作業か
+function isNoPlace(w) {
+  return (MASTERS.noPlaceWorks || []).includes(w);
+}
+
 // ---------- 描画 ----------
 
 function renderBases() {
@@ -116,13 +134,13 @@ function renderWorkArea() {
   const detail = $("work-detail");
 
   if (isFree(b)) {
-    (b.quickWorks || []).forEach((w) => appendWorkChip(box, w));
+    buildingWorks(b).forEach((w) => appendWorkChip(box, w));
     detail.hidden = false;
     detail.placeholder = "やった作業を記入（例: トウモロコシ播種）";
     return;
   }
 
-  MASTERS.works.forEach((w) => appendWorkChip(box, w));
+  buildingWorks(b).forEach((w) => appendWorkChip(box, w));
   detail.hidden = !state.works.has("その他");
   detail.placeholder = "やった作業を記入";
 }
@@ -152,16 +170,25 @@ function renderGrid() {
     return;
   }
 
-  // 一括選択
-  const bulk = el("div", "btn-row bulk-row");
-  const allBtn = el("button", "btn", "すべて選択");
-  allBtn.addEventListener("click", () => {
-    const positions = positionsOf(b);
-    for (let col = 1; col <= b.cols; col++) {
+  // 一括選択（中央通路がある棟は左右半分も選べる）
+  const positions = positionsOf(b);
+  const selectRange = (from, to) => {
+    for (let col = from; col <= to; col++) {
       positions.forEach((pos) => state.cells.add(col + "|" + pos));
     }
     renderGrid();
-  });
+  };
+  const bulk = el("div", "btn-row bulk-row");
+  if (b.centerAfter) {
+    const left = el("button", "btn", `左半分（1〜${b.centerAfter}列）`);
+    left.addEventListener("click", () => selectRange(1, b.centerAfter));
+    const right = el("button", "btn", `右半分（${b.centerAfter + 1}〜${b.cols}列）`);
+    right.addEventListener("click", () => selectRange(b.centerAfter + 1, b.cols));
+    bulk.appendChild(left);
+    bulk.appendChild(right);
+  }
+  const allBtn = el("button", "btn", "すべて選択");
+  allBtn.addEventListener("click", () => selectRange(1, b.cols));
   const clearBtn = el("button", "btn", "選択を解除");
   clearBtn.addEventListener("click", () => {
     state.cells.clear();
@@ -171,14 +198,7 @@ function renderGrid() {
   bulk.appendChild(clearBtn);
   area.appendChild(bulk);
 
-  const positions = positionsOf(b);
   const wrap = el("div", "bar-grid");
-
-  // ヘッダー（入口側／奥側）
-  const head = el("div", "bar-row bar-head");
-  head.appendChild(el("div", "bar-label-blank", ""));
-  positions.forEach((pos) => head.appendChild(el("div", "bar-htxt", pos)));
-  wrap.appendChild(head);
 
   for (let col = 1; col <= b.cols; col++) {
     const row = el("div", "bar-row");
@@ -209,7 +229,9 @@ function renderGrid() {
     });
     wrap.appendChild(row);
 
-    if ((b.aisleAfter || []).includes(col) && col < b.cols) {
+    if (b.centerAfter === col && col < b.cols) {
+      wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
+    } else if ((b.aisleAfter || []).includes(col) && col < b.cols) {
       wrap.appendChild(el("div", "aisle-h", ""));
     }
   }
@@ -265,7 +287,9 @@ function addCurrentItem() {
       toast("「その他」の作業内容を記入してください");
       return false;
     }
-    if (state.cells.size === 0) {
+    // 出荷調整など場所指定が不要な作業だけなら、列を選ばなくてもよい
+    const needPlace = works.some((w) => !isNoPlace(w));
+    if (needPlace && state.cells.size === 0) {
       toast("場所をタップで選んでください");
       return false;
     }
