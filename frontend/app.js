@@ -93,6 +93,13 @@ function isNoPlace(w) {
   return (MASTERS.noPlaceWorks || []).includes(w);
 }
 
+// 旧方式（奥/手前・入口側/奥側）の位置の値を、現在の棟の位置区分に読み替える
+function normPos(b, pos) {
+  const positions = positionsOf(b);
+  if (positions.length === 1) return positions[0];
+  return positions.includes(pos) ? pos : positions[0];
+}
+
 // ---------- 描画 ----------
 
 function renderBases() {
@@ -376,9 +383,14 @@ async function loadToday() {
     if (!state.todayWorks.has(key)) state.todayWorks.set(key, new Set());
     if (work) state.todayWorks.get(key).add(work);
   };
+  // 旧方式の位置の値も現在の区分に読み替えて拾う
+  const addNormalized = (base, building, row, pos, work) => {
+    const b = findBuilding(base, building);
+    add([base, building, row, normPos(b, pos)].join("|"), work);
+  };
   if (state.mock) {
     mockTodayRecords().forEach((r) =>
-      add([r.base, r.building, r.row, r.pos].join("|"), r.work)
+      addNormalized(r.base, r.building, r.row, r.pos, r.work)
     );
     return;
   }
@@ -388,7 +400,7 @@ async function loadToday() {
     if (data.done) {
       data.done.forEach((s) => {
         const p = s.split("|");
-        add(p.slice(0, 4).join("|"), p[4]);
+        addNormalized(p[0], p[1], p[2], p[3], p[4]);
       });
     } else {
       (data.keys || []).forEach((k) => add(k, null));

@@ -129,6 +129,13 @@ h2 {
   border-radius: 3px;
   margin-top: 16px;
 }
+/* 見出し横の読み込み中表示 */
+.loading-inline {
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: #888;
+}
+
 /* モード切替ナビ（3画面共通・同じ並び） */
 .mode-nav {
   display: flex;

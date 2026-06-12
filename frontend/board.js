@@ -62,11 +62,13 @@ let loadSeq = 0;
 
 async function refresh() {
   const seq = ++loadSeq;
+  $("grid-loading").textContent = "（読み込み中…）";
   if (state.mode === "day") {
     $("list-title").textContent = "記録一覧（読み込み中…）";
     const result = await fetchRecordsFor(state.date);
     if (seq !== loadSeq) return;
     state.records = result.records;
+    $("grid-loading").textContent = result.ok ? "" : "（読み込み失敗）";
     renderGrid();
     renderList();
     if (!result.ok) {
@@ -80,6 +82,7 @@ async function refresh() {
     const result = await fetchStatus();
     if (seq !== loadSeq) return;
     state.status = result.status;
+    $("grid-loading").textContent = result.ok ? "" : "（読み込み失敗）";
     renderGrid();
   }
 }
@@ -110,9 +113,7 @@ async function fetchStatus() {
   if (state.mock) {
     const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
     all.forEach((r) => {
-      const key = [r.base, r.building, r.row, r.pos, r.work].join("|");
-      const cur = map.get(key);
-      if (!cur || cur < r.date) map.set(key, r.date);
+      addStatusEntry(map, [r.base, r.building, r.row, r.pos, r.work].join("|"), r.date);
     });
     return { ok: true, status: map };
   }
@@ -120,7 +121,7 @@ async function fetchStatus() {
     try {
       const res = await fetch(CONFIG.GAS_URL + "?action=status&days=30&_=" + Date.now());
       const data = await res.json();
-      Object.entries(data.status || {}).forEach(([k, v]) => map.set(k, v));
+      Object.entries(data.status || {}).forEach(([k, v]) => addStatusEntry(map, k, v));
       return { ok: true, status: map };
     } catch (err) {
       console.warn("作業状況の取得に失敗（試行" + attempt + "）", err);
@@ -141,6 +142,21 @@ function positionsOf(b) {
 
 function isFree(b) {
   return !!(b && b.type === "free");
+}
+
+// 旧方式（奥/手前・入口側/奥側）の位置の値を、現在の棟の位置区分に読み替える
+function normPos(b, pos) {
+  const positions = positionsOf(b);
+  if (positions.length === 1) return positions[0];
+  return positions.includes(pos) ? pos : positions[0];
+}
+
+// 「拠点|棟|列|位置|作業」のキーを正規化して、最新の日付でmapに入れる
+function addStatusEntry(map, key, dateStr) {
+  const p = key.split("|");
+  const b = MASTERS.buildings.find((x) => x.base === p[0] && x.name === p[1]);
+  const nk = [p[0], p[1], p[2], normPos(b, p[3]), p[4]].join("|");
+  if (!map.has(nk) || map.get(nk) < dateStr) map.set(nk, dateStr);
 }
 
 // 絞り込みに使う作業一覧（棟限定の作業＝出荷調整なども含める）
@@ -233,7 +249,8 @@ function cellWorksMap() {
     .filter((r) => r.base === state.base && r.building === state.building.name)
     .forEach((r) => {
       if (r.row === "" || r.row === undefined) return;
-      const key = r.row + "|" + r.pos;
+      // 旧方式の位置の値（奥/手前など）も現在の区分に読み替えて拾う
+      const key = r.row + "|" + normPos(state.building, r.pos);
       if (!map.has(key)) map.set(key, new Set());
       map.get(key).add(r.work);
     });

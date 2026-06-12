@@ -77,19 +77,26 @@ async function loadStaff() {
 
 async function loadStatus() {
   state.status = new Map();
+  // 旧方式（奥/手前など）の位置の値を現在の区分に読み替えて、最新日付で取り込む
+  const addEntry = (key, dateStr) => {
+    const p = key.split("|");
+    const b = MASTERS.buildings.find((x) => x.base === p[0] && x.name === p[1]);
+    const positions = positionsOf(b);
+    const pos = positions.length === 1 ? positions[0] : positions.includes(p[3]) ? p[3] : positions[0];
+    const nk = [p[0], p[1], p[2], pos, p[4]].join("|");
+    if (!state.status.has(nk) || state.status.get(nk) < dateStr) state.status.set(nk, dateStr);
+  };
   if (state.mock) {
     const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
     all.forEach((r) => {
-      const key = [r.base, r.building, r.row, r.pos, r.work].join("|");
-      const cur = state.status.get(key);
-      if (!cur || cur < r.date) state.status.set(key, r.date);
+      addEntry([r.base, r.building, r.row, r.pos, r.work].join("|"), r.date);
     });
     return;
   }
   try {
     const res = await fetch(CONFIG.GAS_URL + "?action=status&days=30");
     const data = await res.json();
-    Object.entries(data.status || {}).forEach(([k, v]) => state.status.set(k, v));
+    Object.entries(data.status || {}).forEach(([k, v]) => addEntry(k, v));
   } catch (err) {
     console.warn("作業状況の取得に失敗", err);
   }
