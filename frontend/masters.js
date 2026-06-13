@@ -34,7 +34,7 @@ const MASTERS = {
       splitCols: [9, 10, 11, 12, 13, 14, 15, 16], splitPositions: ["手前", "奥"],
     },
     { base: "野呂", name: "3号棟", cols: 8, aisleAfter: [1, 3, 5, 7] }, // 形状未確認・仮
-    { base: "野呂", name: "育苗ハウス", type: "free", quickWorks: ["播種", "鉢上げ", "潅水"] },
+    { base: "野呂", name: "育苗ハウス", type: "free", quickWorks: ["トウモロコシ播種", "トマト播種", "鉢上げ", "潅水"] },
   ],
 
   // トマトハウス共通の作業（複数選択可）。「その他」は選択すると記述欄が開く
