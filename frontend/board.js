@@ -271,7 +271,15 @@ function selectBuilding(building) {
   state.building = building;
   renderBuildings();
   renderWorkFilter(); // 棟により選べる作業が変わる（出荷調整は平川のみ）
-  refresh(); // 棟が変わったらデータを取り直す（列なし場所の履歴取得のため）
+  // トマト棟は取得済みデータで即描画（通信なし）。列なし場所だけ履歴を取りに行く
+  if (isFree(building)) {
+    refresh();
+  } else {
+    // 列なし場所から戻ったときは隠していたナビを元に戻す
+    $("date-nav-sec").hidden = state.mode === "week";
+    $("list-sec").hidden = state.mode === "week";
+    renderGrid();
+  }
 }
 
 function renderBuildings() {
