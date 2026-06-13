@@ -123,7 +123,10 @@ async function fetchStatus() {
   if (state.mock) {
     const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
     all.forEach((r) => {
-      put([r.base, r.building, r.row, r.pos, r.work].join("|"), r.date);
+      const b = findBuilding(r.base, r.building);
+      expandPositions(b, r.row, r.pos).forEach((p) =>
+        put([r.base, r.building, r.row, p, r.work].join("|"), r.date)
+      );
     });
     return { ok: true, status: map };
   }
@@ -131,7 +134,13 @@ async function fetchStatus() {
     try {
       const res = await fetch(CONFIG.GAS_URL + "?action=status&days=30&_=" + Date.now());
       const data = await res.json();
-      Object.entries(data.status || {}).forEach(([k, v]) => put(k, v));
+      Object.entries(data.status || {}).forEach(([k, v]) => {
+        const p = k.split("|");
+        const b = findBuilding(p[0], p[1]);
+        expandPositions(b, p[2], p[3]).forEach((pos) =>
+          put([p[0], p[1], p[2], pos, p[4]].join("|"), v)
+        );
+      });
       return { ok: true, status: map };
     } catch (err) {
       console.warn("作業状況の取得に失敗（試行" + attempt + "）", err);
@@ -153,6 +162,16 @@ function positionsOf(b) {
 
 function positionsForCol(b, col) {
   return b && b.splitCols && b.splitCols.includes(col) ? positionsOf(b) : [""];
+}
+
+function findBuilding(base, name) {
+  return MASTERS.buildings.find((b) => b.base === base && b.name === name);
+}
+
+// 記録の位置の値を現在の棟の区分に合わせて展開（昨日までの pos="" データも分割列に出す）
+function expandPositions(b, col, pos) {
+  const poss = positionsForCol(b, Number(col));
+  return poss.indexOf(pos) >= 0 ? [pos] : poss;
 }
 
 function isFree(b) {
@@ -249,11 +268,13 @@ function cellWorksMap() {
     .filter((r) => r.base === state.base && r.building === state.building.name)
     .forEach((r) => {
       if (r.row === "" || r.row === undefined) return;
-      const key = r.row + "|" + r.pos;
-      if (!map.has(key)) map.set(key, { works: new Set(), partial: false });
-      const o = map.get(key);
-      o.works.add(r.work);
-      if (r.state === "途中") o.partial = true;
+      expandPositions(state.building, r.row, r.pos).forEach((pos) => {
+        const key = r.row + "|" + pos;
+        if (!map.has(key)) map.set(key, { works: new Set(), partial: false });
+        const o = map.get(key);
+        o.works.add(r.work);
+        if (r.state === "途中") o.partial = true;
+      });
     });
   return map;
 }
@@ -277,8 +298,28 @@ function renderGrid() {
   if (!b) return;
 
   if (isFree(b)) {
-    area.appendChild(el("div", "hint", "この場所には配置図がありません（記録は一覧に表示されます）"));
     $("grid-hint").textContent = "";
+    if (state.mode !== "day") {
+      area.appendChild(el("div", "hint", "この場所は配置図がありません。「日別」で作業を確認できます"));
+      return;
+    }
+    const recs = state.records.filter((r) => r.base === state.base && r.building === b.name);
+    if (recs.length === 0) {
+      area.appendChild(el("div", "hint", "この日の記録はありません"));
+      return;
+    }
+    // 列がないので、その日やった作業（記録者）の一覧を出す
+    const byWork = new Map();
+    recs.forEach((r) => {
+      const w = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
+      if (!byWork.has(w)) byWork.set(w, new Set());
+      byWork.get(w).add(r.recorder);
+    });
+    const box = el("div", "bar-grid");
+    byWork.forEach((people, w) => {
+      box.appendChild(el("div", "item", `${w}（${[...people].join("・")}）`));
+    });
+    area.appendChild(box);
     return;
   }
 
@@ -291,9 +332,9 @@ function renderGrid() {
   const wrap = el("div", "bar-grid");
 
   for (let col = 1; col <= b.cols; col++) {
+    const row = el("div", "bar-row");
+    row.appendChild(el("div", "bar-label", col + "列"));
     positionsForCol(b, col).forEach((pos) => {
-      const row = el("div", "bar-row");
-      row.appendChild(el("div", "bar-label", pos ? col + "列 " + pos : col + "列"));
       let cls = "bar-cell";
       let label = "";
       if (state.mode === "day") {
@@ -309,9 +350,12 @@ function renderGrid() {
         cls += heat.cls;
         label = heat.label;
       }
-      row.appendChild(el("div", cls, label));
-      wrap.appendChild(row);
+      const cell = el("div", cls);
+      if (pos) cell.appendChild(el("span", "cell-pos", pos));
+      cell.appendChild(el("span", "cell-body", label));
+      row.appendChild(cell);
     });
+    wrap.appendChild(row);
     if (b.centerAfter === col && col < b.cols) {
       wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
     } else if ((b.aisleAfter || []).includes(col) && col < b.cols) {

@@ -99,6 +99,13 @@ function positionsForCol(b, col) {
   return b && b.splitCols && b.splitCols.includes(col) ? positionsOf(b) : [""];
 }
 
+// 記録の位置の値を、現在の棟の区分に合わせて展開する。
+// 一致すればそのまま、合わなければその列の全区分に展開（昨日までの pos="" データも分割列に出す）
+function expandPositions(b, col, pos) {
+  const poss = positionsForCol(b, Number(col));
+  return poss.indexOf(pos) >= 0 ? [pos] : poss;
+}
+
 function isFree(b) {
   return !!(b && b.type === "free");
 }
@@ -232,19 +239,22 @@ function renderGrid() {
   const wrap = el("div", "bar-grid");
 
   for (let col = 1; col <= b.cols; col++) {
-    positionsForCol(b, col).forEach((pos) => {
+    const poss = positionsForCol(b, col);
+    const row = el("div", "bar-row");
+
+    // 列ラベルタップで列全体（手前＋奥）をまとめてトグル
+    const lbl = el("button", "bar-label", col + "列");
+    lbl.addEventListener("click", () => {
+      const keys = poss.map((p) => col + "|" + p);
+      const allSel = keys.every((k) => state.cells.has(k));
+      keys.forEach((k) => (allSel ? state.cells.delete(k) : state.cells.add(k)));
+      renderGrid();
+    });
+    row.appendChild(lbl);
+
+    // 手前/奥は左右に並べる（分かれない列は1マス）
+    poss.forEach((pos) => {
       const key = col + "|" + pos;
-      const row = el("div", "bar-row");
-
-      const toggle = () => {
-        state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
-        renderGrid();
-      };
-
-      const lbl = el("button", "bar-label", pos ? col + "列 " + pos : col + "列");
-      lbl.addEventListener("click", toggle);
-      row.appendChild(lbl);
-
       const doneKey = [state.base, b.name, col, pos].join("|");
       const info = state.todayWorks.get(doneKey);
       let cls = "bar-cell";
@@ -253,13 +263,17 @@ function renderGrid() {
         if (info.partial) cls += " partial";
       }
       if (state.cells.has(key)) cls += " selected";
-      const label = info ? info.labels.slice(0, 5).join("・") : "";
-      const cell = el("button", cls, label);
-      cell.addEventListener("click", toggle);
+      const cell = el("button", cls);
+      if (pos) cell.appendChild(el("span", "cell-pos", pos));
+      cell.appendChild(el("span", "cell-body", info ? info.labels.slice(0, 5).join("・") : ""));
+      cell.addEventListener("click", () => {
+        state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
+        renderGrid();
+      });
       row.appendChild(cell);
-
-      wrap.appendChild(row);
     });
+
+    wrap.appendChild(row);
 
     if (b.centerAfter === col && col < b.cols) {
       wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
@@ -305,7 +319,8 @@ function addCurrentItem() {
   let works = [...state.works];
 
   if (isFree(b)) {
-    if (detail) works.push(detail);
+    // 記入があればそれを1作業とする（チップ選択と二重に数えない）
+    if (detail) works = [detail];
     if (works.length === 0) {
       toast("作業を選ぶか記入してください");
       return false;
@@ -406,16 +421,19 @@ async function gasSave(payload) {
 async function loadToday() {
   state.todayWorks = new Map();
   const add = (base, building, row, pos, work, st) => {
-    const key = [base, building, row, pos].join("|");
-    if (!state.todayWorks.has(key)) {
-      state.todayWorks.set(key, { labels: [], works: new Set(), partial: false });
-    }
-    const o = state.todayWorks.get(key);
-    if (work) {
-      o.works.add(work);
-      o.labels.push(workAbbr(work) + (st === "途中" ? "~" : ""));
-      if (st === "途中") o.partial = true;
-    }
+    const b = findBuilding(base, building);
+    expandPositions(b, row, pos).forEach((p) => {
+      const key = [base, building, row, p].join("|");
+      if (!state.todayWorks.has(key)) {
+        state.todayWorks.set(key, { labels: [], works: new Set(), partial: false });
+      }
+      const o = state.todayWorks.get(key);
+      if (work) {
+        o.works.add(work);
+        o.labels.push(workAbbr(work) + (st === "途中" ? "~" : ""));
+        if (st === "途中") o.partial = true;
+      }
+    });
   };
   if (state.mock) {
     mockTodayRecords().forEach((r) => add(r.base, r.building, r.row, r.pos, r.work, r.state));

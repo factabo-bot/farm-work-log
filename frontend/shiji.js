@@ -101,13 +101,24 @@ async function loadStatus() {
   };
   if (state.mock) {
     const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
-    all.forEach((r) => put([r.base, r.building, r.row, r.pos, r.work].join("|"), r.date));
+    all.forEach((r) => {
+      const b = findBuilding(r.base, r.building);
+      expandPositions(b, r.row, r.pos).forEach((p) =>
+        put([r.base, r.building, r.row, p, r.work].join("|"), r.date)
+      );
+    });
     return;
   }
   try {
     const res = await fetch(CONFIG.GAS_URL + "?action=status&days=30");
     const data = await res.json();
-    Object.entries(data.status || {}).forEach(([k, v]) => put(k, v));
+    Object.entries(data.status || {}).forEach(([k, v]) => {
+      const p = k.split("|");
+      const b = findBuilding(p[0], p[1]);
+      expandPositions(b, p[2], p[3]).forEach((pos) =>
+        put([p[0], p[1], p[2], pos, p[4]].join("|"), v)
+      );
+    });
   } catch (err) {
     console.warn("作業状況の取得に失敗", err);
   }
@@ -125,6 +136,16 @@ function positionsOf(b) {
 
 function positionsForCol(b, col) {
   return b && b.splitCols && b.splitCols.includes(col) ? positionsOf(b) : [""];
+}
+
+function findBuilding(base, name) {
+  return MASTERS.buildings.find((b) => b.base === base && b.name === name);
+}
+
+// 記録の位置の値を現在の棟の区分に合わせて展開（昨日までの pos="" データも分割列に出す）
+function expandPositions(b, col, pos) {
+  const poss = positionsForCol(b, Number(col));
+  return poss.indexOf(pos) >= 0 ? [pos] : poss;
 }
 
 function isFree(b) {
@@ -303,28 +324,35 @@ function renderGrid() {
   const wrap = el("div", "bar-grid");
 
   for (let col = 1; col <= b.cols; col++) {
-    positionsForCol(b, col).forEach((pos) => {
-      const key = col + "|" + pos;
-      const row = el("div", "bar-row");
-      const toggle = () => {
-        state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
-        renderGrid();
-      };
-      const lbl = el("button", "bar-label", pos ? col + "列 " + pos : col + "列");
-      lbl.addEventListener("click", toggle);
-      row.appendChild(lbl);
+    const poss = positionsForCol(b, col);
+    const row = el("div", "bar-row");
+    const lbl = el("button", "bar-label", col + "列");
+    lbl.addEventListener("click", () => {
+      const keys = poss.map((p) => col + "|" + p);
+      const allSel = keys.every((k) => state.cells.has(k));
+      keys.forEach((k) => (allSel ? state.cells.delete(k) : state.cells.add(k)));
+      renderGrid();
+    });
+    row.appendChild(lbl);
 
+    poss.forEach((pos) => {
+      const key = col + "|" + pos;
       const heat = cellHeat(col, pos);
       let cls = "bar-cell" + heat.cls;
       if (state.cells.has(key)) cls += " selected";
       // 作業選択中＝その作業のヒートマップ、未選択＝列ごとの作業別経過日数
       const label = heat.cls ? heat.label : cellAllWorksLabel(col, pos);
-      const cell = el("button", cls, label);
-      cell.addEventListener("click", toggle);
+      const cell = el("button", cls);
+      if (pos) cell.appendChild(el("span", "cell-pos", pos));
+      cell.appendChild(el("span", "cell-body", label));
+      cell.addEventListener("click", () => {
+        state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
+        renderGrid();
+      });
       row.appendChild(cell);
-
-      wrap.appendChild(row);
     });
+
+    wrap.appendChild(row);
 
     if (b.centerAfter === col && col < b.cols) {
       wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
