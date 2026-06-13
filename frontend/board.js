@@ -12,6 +12,7 @@ const state = {
   workFilter: null,     // 日別: null=全部 ／ 週間: 必ずどれか1つ
   records: [],          // 日別モードの記録
   status: new Map(),    // 週間モード "拠点|棟|列|位置|作業" → 最後にやった日
+  history: [],          // 列なし場所（育苗ハウス等）の作業履歴
   mock: !CONFIG.GAS_URL,
 };
 
@@ -35,7 +36,7 @@ async function init() {
   renderBases();
   selectBuilding(buildingsOfBase()[0]);
   renderWorkFilter();
-  await refresh();
+  setMode("day"); // 初期表示も「日別」ボタンと同じ経路にして確実に読み込む
 }
 
 function shiftDate(days) {
@@ -69,12 +70,28 @@ function setGridLoading(text) {
 async function refresh() {
   const seq = ++loadSeq;
   setGridLoading("（読み込み中…）");
+  const b = state.building;
+
+  // 列のない場所（育苗ハウス等）は、日付ごとの作業履歴を表示する
+  if (b && isFree(b)) {
+    $("list-sec").hidden = true;
+    $("date-nav-sec").hidden = true;
+    const res = await fetchHistory(state.base, b.name);
+    if (seq !== loadSeq) return;
+    state.history = res.records;
+    setGridLoading(res.ok ? "" : "（読み込み失敗）");
+    renderGrid();
+    return;
+  }
+
+  $("list-sec").hidden = state.mode === "week";
+  $("date-nav-sec").hidden = state.mode === "week";
   if (state.mode === "day") {
     $("list-title").textContent = "記録一覧（読み込み中…）";
     const result = await fetchRecordsFor(state.date);
     if (seq !== loadSeq) return;
     state.records = result.records;
-    setGridLoading(result.ok ? `（${state.records.length}件）` : "（読み込み失敗）");
+    setGridLoading(result.ok ? "" : "（読み込み失敗）");
     renderGrid();
     renderList();
     if (!result.ok) {
@@ -88,9 +105,35 @@ async function refresh() {
     const result = await fetchStatus();
     if (seq !== loadSeq) return;
     state.status = result.status;
-    setGridLoading(result.ok ? `（取得 ${state.status.size}件）` : "（読み込み失敗）");
+    setGridLoading(result.ok ? "" : "（読み込み失敗）");
     renderGrid();
   }
+}
+
+async function fetchHistory(base, building) {
+  if (state.mock) {
+    const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
+    const records = all
+      .filter((r) => r.base === base && r.building === building)
+      .map((r) => ({ date: r.date, recorder: r.recorder, work: r.work, workDetail: r.workDetail, state: r.state }));
+    return { ok: true, records };
+  }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(
+        CONFIG.GAS_URL +
+          "?action=history&base=" + encodeURIComponent(base) +
+          "&building=" + encodeURIComponent(building) +
+          "&days=30&_=" + Date.now()
+      );
+      const data = await res.json();
+      return { ok: true, records: data.history || [] };
+    } catch (err) {
+      console.warn("履歴の取得に失敗（試行" + attempt + "）", err);
+      await sleep(600);
+    }
+  }
+  return { ok: false, records: [] };
 }
 
 // ---------- データ取得 ----------
@@ -221,7 +264,7 @@ function renderBases() {
 function selectBuilding(building) {
   state.building = building;
   renderBuildings();
-  renderGrid();
+  refresh(); // 棟が変わったらデータを取り直す（列なし場所の履歴取得のため）
 }
 
 function renderBuildings() {
@@ -297,27 +340,35 @@ function renderGrid() {
   const b = state.building;
   if (!b) return;
 
-  if (isFree(b)) {
-    $("grid-hint").textContent = "";
-    if (state.mode !== "day") {
-      area.appendChild(el("div", "hint", "この場所は配置図がありません。「日別」で作業を確認できます"));
+  // 列のない場所（育苗ハウス等）は「作業でしぼる」を隠し、見出しも変える
+  const free = isFree(b);
+  $("grid-title").textContent = free ? "この場所の作業" : "配置図";
+  const wfSec = $("work-filter-sec");
+  if (wfSec) wfSec.hidden = free;
+
+  if (free) {
+    $("grid-hint").textContent = "直近30日の記録（新しい日付が上）";
+    const hist = state.history || [];
+    if (hist.length === 0) {
+      area.appendChild(el("div", "hint", "直近30日の記録はありません"));
       return;
     }
-    const recs = state.records.filter((r) => r.base === state.base && r.building === b.name);
-    if (recs.length === 0) {
-      area.appendChild(el("div", "hint", "この日の記録はありません"));
-      return;
-    }
-    // 列がないので、その日やった作業（記録者）の一覧を出す
-    const byWork = new Map();
-    recs.forEach((r) => {
+    // 日付 → 記録者 → 作業 にまとめ、日付の新しい順で並べる
+    const byDate = new Map();
+    hist.forEach((r) => {
+      if (!byDate.has(r.date)) byDate.set(r.date, new Map());
       const w = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
-      if (!byWork.has(w)) byWork.set(w, new Set());
-      byWork.get(w).add(r.recorder);
+      const label = w + (r.state === "途中" ? "（途中）" : "");
+      const byRec = byDate.get(r.date);
+      if (!byRec.has(r.recorder)) byRec.set(r.recorder, new Set());
+      byRec.get(r.recorder).add(label);
     });
-    const box = el("div", "bar-grid");
-    byWork.forEach((people, w) => {
-      box.appendChild(el("div", "item", `${w}（${[...people].join("・")}）`));
+    const box = el("div", "free-log");
+    [...byDate.keys()].sort((a, b) => (a < b ? 1 : -1)).forEach((date) => {
+      box.appendChild(el("div", "recorder-head", date));
+      byDate.get(date).forEach((works, rec) => {
+        box.appendChild(el("div", "item", `${rec}：${[...works].join("・")}`));
+      });
     });
     area.appendChild(box);
     return;

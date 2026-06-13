@@ -324,6 +324,32 @@ function doGet(e) {
     return json_({ ok: true, status: status });
   }
 
+  // 列のない場所（育苗ハウス等）の作業履歴。?action=history&base=&building=&days=
+  if (action === "history") {
+    var hb = String(e.parameter.base || "");
+    var hbld = String(e.parameter.building || "");
+    var hd = Math.max(1, Math.min(90, Number(e.parameter.days) || 30));
+    var hsince = new Date();
+    hsince.setDate(hsince.getDate() - hd);
+    var hsinceKey = Utilities.formatDate(hsince, TZ, "yyyy-MM-dd");
+    var shh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RECORDS);
+    var vh = shh.getDataRange().getValues();
+    var hist = [];
+    for (var hi = 1; hi < vh.length; hi++) {
+      if (vh[hi][4] !== hb || vh[hi][5] !== hbld) continue;
+      var hk = dateKey_(vh[hi][1]);
+      if (hk < hsinceKey) continue;
+      hist.push({
+        date: hk,
+        recorder: vh[hi][2],
+        work: vh[hi][8],
+        workDetail: vh[hi][9],
+        state: vh[hi][12] || "完了",
+      });
+    }
+    return json_({ ok: true, history: hist });
+  }
+
   // 指定日の記録一覧（進捗ボード用）。?action=records&date=yyyy-MM-dd
   if (action === "records") {
     var dateParam = String(e.parameter.date || "");
