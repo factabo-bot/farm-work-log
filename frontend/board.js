@@ -76,10 +76,17 @@ async function refresh() {
   if (b && isFree(b)) {
     $("list-sec").hidden = true;
     $("date-nav-sec").hidden = true;
-    const res = await fetchHistory(state.base, b.name);
-    if (seq !== loadSeq) return;
-    state.history = res.records;
-    setGridLoading(res.ok ? "" : "（読み込み失敗）");
+    if (state.mode === "day") {
+      const result = await fetchRecordsFor(state.date);
+      if (seq !== loadSeq) return;
+      state.records = result.records;
+      setGridLoading(result.ok ? "" : "（読み込み失敗）");
+    } else {
+      const res = await fetchHistory(state.base, b.name);
+      if (seq !== loadSeq) return;
+      state.history = res.records;
+      setGridLoading(res.ok ? "" : "（読み込み失敗）");
+    }
     renderGrid();
     return;
   }
@@ -221,16 +228,15 @@ function isFree(b) {
   return !!(b && b.type === "free");
 }
 
-// 絞り込みに使う作業一覧（棟限定の作業＝出荷調整なども含める）
+// 絞り込みに使う作業一覧。棟限定の作業（出荷調整＝平川のみ）は選択中の棟のときだけ出す
 function filterWorks() {
+  const b = state.building;
   const list = [...MASTERS.works];
-  MASTERS.buildings.forEach((b) => {
-    (b.extraWorks || []).forEach((w) => {
-      if (!list.includes(w)) {
-        const idx = list.indexOf("その他");
-        list.splice(idx < 0 ? list.length : idx, 0, w);
-      }
-    });
+  ((b && b.extraWorks) || []).forEach((w) => {
+    if (!list.includes(w)) {
+      const idx = list.indexOf("その他");
+      list.splice(idx < 0 ? list.length : idx, 0, w);
+    }
   });
   return list;
 }
@@ -264,6 +270,7 @@ function renderBases() {
 function selectBuilding(building) {
   state.building = building;
   renderBuildings();
+  renderWorkFilter(); // 棟により選べる作業が変わる（出荷調整は平川のみ）
   refresh(); // 棟が変わったらデータを取り直す（列なし場所の履歴取得のため）
 }
 
@@ -347,27 +354,53 @@ function renderGrid() {
   if (wfSec) wfSec.hidden = free;
 
   if (free) {
-    $("grid-hint").textContent = "直近30日の記録（新しい日付が上）";
+    // 日別＝今日の「作業：実施者」、週間＝日付（何日前）ごとの「作業：実施者」
+    if (state.mode === "day") {
+      $("grid-hint").textContent = "今日の作業と実施者";
+      const recs = state.records.filter((r) => r.base === state.base && r.building === b.name);
+      if (recs.length === 0) {
+        area.appendChild(el("div", "hint", "今日の記録はありません"));
+        return;
+      }
+      const byWork = new Map();
+      recs.forEach((r) => {
+        const w = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
+        const label = w + (r.state === "途中" ? "（途中）" : "");
+        if (!byWork.has(label)) byWork.set(label, new Set());
+        byWork.get(label).add(r.recorder);
+      });
+      const box = el("div", "free-log");
+      byWork.forEach((people, label) => {
+        box.appendChild(el("div", "item", `${label}：${[...people].join("・")}`));
+      });
+      area.appendChild(box);
+      return;
+    }
+
+    $("grid-hint").textContent = "直近30日（新しい順）";
     const hist = state.history || [];
     if (hist.length === 0) {
       area.appendChild(el("div", "hint", "直近30日の記録はありません"));
       return;
     }
-    // 日付 → 記録者 → 作業 にまとめ、日付の新しい順で並べる
+    const today0 = new Date(formatDateStr(new Date()) + "T00:00:00");
     const byDate = new Map();
     hist.forEach((r) => {
       if (!byDate.has(r.date)) byDate.set(r.date, new Map());
       const w = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
       const label = w + (r.state === "途中" ? "（途中）" : "");
-      const byRec = byDate.get(r.date);
-      if (!byRec.has(r.recorder)) byRec.set(r.recorder, new Set());
-      byRec.get(r.recorder).add(label);
+      const m = byDate.get(r.date);
+      if (!m.has(label)) m.set(label, new Set());
+      m.get(label).add(r.recorder);
     });
     const box = el("div", "free-log");
     [...byDate.keys()].sort((a, b) => (a < b ? 1 : -1)).forEach((date) => {
-      box.appendChild(el("div", "recorder-head", date));
-      byDate.get(date).forEach((works, rec) => {
-        box.appendChild(el("div", "item", `${rec}：${[...works].join("・")}`));
+      const d = new Date(date + "T00:00:00");
+      const ago = Math.round((today0 - d) / MS_DAY);
+      const md = d.getMonth() + 1 + "/" + d.getDate();
+      box.appendChild(el("div", "recorder-head", `${md}（${ago === 0 ? "今日" : ago + "日前"}）`));
+      byDate.get(date).forEach((people, label) => {
+        box.appendChild(el("div", "item", `${label}：${[...people].join("・")}`));
       });
     });
     area.appendChild(box);
