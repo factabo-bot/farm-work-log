@@ -5,7 +5,7 @@
 // 週間モード: 作業ごとに「最後にやってから何日たったか」をヒートマップで見る
 
 const state = {
-  mode: "day",          // "day" | "week"
+  mode: null,           // null=未選択 / "day" / "week"
   date: formatDateStr(new Date()),
   base: MASTERS.bases[0],
   building: null,
@@ -36,7 +36,7 @@ async function init() {
   renderBases();
   selectBuilding(buildingsOfBase()[0]);
   renderWorkFilter();
-  setMode("day"); // 初期表示も「日別」ボタンと同じ経路にして確実に読み込む
+  renderGrid(); // 初回は読み込まず「日別/週間を選んでください」を表示（押した時に読み込む）
 }
 
 function shiftDate(days) {
@@ -271,6 +271,10 @@ function selectBuilding(building) {
   state.building = building;
   renderBuildings();
   renderWorkFilter(); // 棟により選べる作業が変わる（出荷調整は平川のみ）
+  if (!state.mode) {
+    renderGrid(); // モード未選択ならプレースホルダ表示（読み込みしない）
+    return;
+  }
   // トマト棟は取得済みデータで即描画（通信なし）。列なし場所だけ履歴を取りに行く
   if (isFree(building)) {
     refresh();
@@ -354,6 +358,17 @@ function renderGrid() {
   area.innerHTML = "";
   const b = state.building;
   if (!b) return;
+
+  // モード未選択（進捗ボードに入った直後）は読み込まず、選択をうながす
+  if (!state.mode) {
+    $("grid-title").textContent = "配置図";
+    $("date-nav-sec").hidden = true;
+    $("list-sec").hidden = true;
+    const wf0 = $("work-filter-sec");
+    if (wf0) wf0.hidden = true;
+    area.appendChild(el("div", "hint", "上の「📅 日別」か「🌡 週間」を選んでください"));
+    return;
+  }
 
   // 列のない場所（育苗ハウス等）は「作業でしぼる」を隠し、見出しも変える
   const free = isFree(b);
