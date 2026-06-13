@@ -18,7 +18,7 @@ var TZ = "Asia/Tokyo";
 
 var RECORD_HEADERS = [
   "記録日時", "日付", "記録者", "userId",
-  "拠点", "棟", "列", "位置", "作業", "作業詳細", "備考", "記録ID",
+  "拠点", "棟", "列", "位置", "作業", "作業詳細", "備考", "記録ID", "状態",
 ];
 
 var TASK_HEADERS = [
@@ -45,12 +45,12 @@ function setup() {
     tasks.getRange(1, 1, 1, TASK_HEADERS.length).setValues([TASK_HEADERS]);
     tasks.setFrozenRows(1);
   }
-  // 既存の記録シートに「記録ID」列がなければ追加（取り消し機能用）
+  // 既存の記録シートに不足列があれば末尾に追加（記録ID＝取り消し用、状態＝途中/完了）
   var rec2 = ss.getSheetByName(SHEET_RECORDS);
-  var headers = rec2.getRange(1, 1, 1, rec2.getLastColumn()).getValues()[0];
-  if (headers.indexOf("記録ID") < 0) {
-    rec2.getRange(1, headers.length + 1).setValue("記録ID");
-  }
+  ["記録ID", "状態"].forEach(function (name) {
+    var headers = rec2.getRange(1, 1, 1, rec2.getLastColumn()).getValues()[0];
+    if (headers.indexOf(name) < 0) rec2.getRange(1, headers.length + 1).setValue(name);
+  });
 }
 
 // 記録・指示の受信
@@ -82,6 +82,7 @@ function doPost(e) {
             w, w === "その他" ? (en.workDetail || "") : "",
             data.note || "",
             Utilities.getUuid(), // 記録ID（本人による取り消しに使う）
+            en.partial ? "途中" : "完了", // 状態
           ]);
         });
       });
@@ -231,8 +232,9 @@ function doGet(e) {
     for (var i = 1; i < values.length; i++) {
       if (dateKey_(values[i][1]) === today) {
         // 拠点|棟|列|位置|作業 （フロント側のキー形式と一致させる）
+        // 拠点|棟|列|位置|作業|状態
         done.push(
-          [values[i][4], values[i][5], values[i][6], values[i][7], values[i][8]].join("|")
+          [values[i][4], values[i][5], values[i][6], values[i][7], values[i][8], values[i][12] || "完了"].join("|")
         );
       }
     }
@@ -260,6 +262,7 @@ function doGet(e) {
         pos: vm[q][7],
         work: vm[q][8],
         workDetail: vm[q][9],
+        state: vm[q][12] || "完了",
       });
     }
     return json_({ ok: true, records: mine });
@@ -343,6 +346,7 @@ function doGet(e) {
         work: vals2[k][8],
         workDetail: vals2[k][9],
         note: vals2[k][10],
+        state: vals2[k][12] || "完了",
       });
     }
     return json_({ ok: true, records: records });

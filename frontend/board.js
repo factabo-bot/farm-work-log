@@ -117,10 +117,13 @@ async function fetchRecordsFor(date) {
 
 async function fetchStatus() {
   const map = new Map();
+  const put = (k, v) => {
+    if (!map.has(k) || map.get(k) < v) map.set(k, v);
+  };
   if (state.mock) {
     const all = JSON.parse(localStorage.getItem("farmlog_records") || "[]");
     all.forEach((r) => {
-      addStatusEntry(map, [r.base, r.building, r.row, r.pos, r.work].join("|"), r.date);
+      put([r.base, r.building, r.row, r.pos, r.work].join("|"), r.date);
     });
     return { ok: true, status: map };
   }
@@ -128,7 +131,7 @@ async function fetchStatus() {
     try {
       const res = await fetch(CONFIG.GAS_URL + "?action=status&days=30&_=" + Date.now());
       const data = await res.json();
-      Object.entries(data.status || {}).forEach(([k, v]) => addStatusEntry(map, k, v));
+      Object.entries(data.status || {}).forEach(([k, v]) => put(k, v));
       return { ok: true, status: map };
     } catch (err) {
       console.warn("作業状況の取得に失敗（試行" + attempt + "）", err);
@@ -145,26 +148,15 @@ function buildingsOfBase() {
 }
 
 function positionsOf(b) {
-  return b && b.positions && b.positions.length ? b.positions : [""];
+  return b && b.splitPositions && b.splitPositions.length ? b.splitPositions : [""];
+}
+
+function positionsForCol(b, col) {
+  return b && b.splitCols && b.splitCols.includes(col) ? positionsOf(b) : [""];
 }
 
 function isFree(b) {
   return !!(b && b.type === "free");
-}
-
-// 旧方式（奥/手前・入口側/奥側）の位置の値を、現在の棟の位置区分に読み替える
-function normPos(b, pos) {
-  const positions = positionsOf(b);
-  if (positions.length === 1) return positions[0];
-  return positions.includes(pos) ? pos : positions[0];
-}
-
-// 「拠点|棟|列|位置|作業」のキーを正規化して、最新の日付でmapに入れる
-function addStatusEntry(map, key, dateStr) {
-  const p = key.split("|");
-  const b = MASTERS.buildings.find((x) => x.base === p[0] && x.name === p[1]);
-  const nk = [p[0], p[1], p[2], normPos(b, p[3]), p[4]].join("|");
-  if (!map.has(nk) || map.get(nk) < dateStr) map.set(nk, dateStr);
 }
 
 // 絞り込みに使う作業一覧（棟限定の作業＝出荷調整なども含める）
@@ -250,17 +242,18 @@ function renderWorkFilter() {
   });
 }
 
-// 日別: 表示中の棟のマスごとに、その日やった作業のSet
+// 日別: 表示中の棟のマスごとに、その日やった作業と途中フラグ
 function cellWorksMap() {
   const map = new Map();
   state.records
     .filter((r) => r.base === state.base && r.building === state.building.name)
     .forEach((r) => {
       if (r.row === "" || r.row === undefined) return;
-      // 旧方式の位置の値（奥/手前など）も現在の区分に読み替えて拾う
-      const key = r.row + "|" + normPos(state.building, r.pos);
-      if (!map.has(key)) map.set(key, new Set());
-      map.get(key).add(r.work);
+      const key = r.row + "|" + r.pos;
+      if (!map.has(key)) map.set(key, { works: new Set(), partial: false });
+      const o = map.get(key);
+      o.works.add(r.work);
+      if (r.state === "途中") o.partial = true;
     });
   return map;
 }
@@ -294,29 +287,31 @@ function renderGrid() {
       ? "緑＝記録あり（文字はやった作業）"
       : "数字＝最後にやってから何日たったか（青＝最近 → 赤＝7日以上 or 記録なし）";
 
-  const positions = positionsOf(b);
   const worksMap = state.mode === "day" ? cellWorksMap() : null;
   const wrap = el("div", "bar-grid");
 
   for (let col = 1; col <= b.cols; col++) {
-    const row = el("div", "bar-row");
-    row.appendChild(el("div", "bar-label", col + "列"));
-    positions.forEach((pos) => {
+    positionsForCol(b, col).forEach((pos) => {
+      const row = el("div", "bar-row");
+      row.appendChild(el("div", "bar-label", pos ? col + "列 " + pos : col + "列"));
       let cls = "bar-cell";
       let label = "";
       if (state.mode === "day") {
-        const works = worksMap.get(col + "|" + pos);
-        const filled = works && (state.workFilter === null || works.has(state.workFilter));
-        if (filled) cls += " filled";
-        label = works ? [...works].map(workAbbr).slice(0, 5).join("・") : "";
+        const info = worksMap.get(col + "|" + pos);
+        const show = info && (state.workFilter === null || info.works.has(state.workFilter));
+        if (show) {
+          cls += " filled";
+          if (info.partial) cls += " partial";
+        }
+        label = info ? [...info.works].map(workAbbr).slice(0, 5).join("・") : "";
       } else {
         const heat = cellHeat(col, pos);
         cls += heat.cls;
         label = heat.label;
       }
       row.appendChild(el("div", cls, label));
+      wrap.appendChild(row);
     });
-    wrap.appendChild(row);
     if (b.centerAfter === col && col < b.cols) {
       wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
     } else if ((b.aisleAfter || []).includes(col) && col < b.cols) {
@@ -350,7 +345,8 @@ function renderList() {
 
     const groups = new Map();
     mine.forEach((r) => {
-      const work = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
+      const baseWork = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
+      const work = baseWork + (r.state === "途中" ? "（途中）" : "");
       const gkey = [r.base, r.building, work].join("\t");
       if (!groups.has(gkey)) groups.set(gkey, []);
       if (r.row !== "" && r.row !== undefined) {

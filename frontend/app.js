@@ -7,7 +7,8 @@ const state = {
   cells: new Set(),    // 選択中マス "列|位置" 例 "3|入口側"
   works: new Set(),    // 選択中の作業（複数可）
   items: [],           // 追加済みの作業 [{base, building, cells:[], works:[], workDetail}]
-  todayWorks: new Map(),// 今日記録済みのマス "拠点|棟|列|位置" → 作業名のSet
+  todayWorks: new Map(),// 今日記録済み "拠点|棟|列|位置" → {labels,works,partial}
+  partial: false,       // 「途中まで」チェックの状態
   profile: { userId: "", displayName: "テスト利用者" },
   mock: !CONFIG.GAS_URL,
 };
@@ -59,6 +60,15 @@ async function init() {
     }
   });
   $("submit").addEventListener("click", submitAll);
+
+  const pc = $("partial-check");
+  if (pc) pc.addEventListener("change", () => (state.partial = pc.checked));
+}
+
+function resetPartial() {
+  state.partial = false;
+  const pc = $("partial-check");
+  if (pc) pc.checked = false;
 }
 
 // LINE外ブラウザ用のログインボタン（1回ログインすれば以降は自動で名前が入る）
@@ -79,8 +89,14 @@ function findBuilding(base, name) {
   return MASTERS.buildings.find((b) => b.base === base && b.name === name);
 }
 
+// 分割位置の呼び名（手前/奥）。分割しない棟は [""]（位置区分なし）
 function positionsOf(b) {
-  return b && b.positions && b.positions.length ? b.positions : [""];
+  return b && b.splitPositions && b.splitPositions.length ? b.splitPositions : [""];
+}
+
+// その列が手前/奥に分かれるか。分かれる列だけ ["手前","奥"]、他は [""]
+function positionsForCol(b, col) {
+  return b && b.splitCols && b.splitCols.includes(col) ? positionsOf(b) : [""];
 }
 
 function isFree(b) {
@@ -105,13 +121,6 @@ function isNoPlace(w) {
   return (MASTERS.noPlaceWorks || []).includes(w);
 }
 
-// 旧方式（奥/手前・入口側/奥側）の位置の値を、現在の棟の位置区分に読み替える
-function normPos(b, pos) {
-  const positions = positionsOf(b);
-  if (positions.length === 1) return positions[0];
-  return positions.includes(pos) ? pos : positions[0];
-}
-
 // ---------- 描画 ----------
 
 function renderBases() {
@@ -133,6 +142,7 @@ function selectBuilding(building) {
   state.cells.clear();
   state.works.clear();
   $("work-detail").value = "";
+  resetPartial();
   renderBuildings();
   renderWorkArea();
   renderGrid();
@@ -180,7 +190,7 @@ function appendWorkChip(box, w) {
 }
 
 // 配置図: 入口（妻面中央）を左にして、列を横長バーで縦に並べる。
-// バーは「入口側半分／奥側半分」に分かれ、列番号タップで列全体を選択
+// 手前/奥に分かれる列は2行、分かれない列は1行で表示する。
 function renderGrid() {
   const area = $("grid-area");
   area.innerHTML = "";
@@ -193,10 +203,9 @@ function renderGrid() {
   }
 
   // 一括選択（中央通路がある棟は左右半分も選べる）
-  const positions = positionsOf(b);
   const selectRange = (from, to) => {
     for (let col = from; col <= to; col++) {
-      positions.forEach((pos) => state.cells.add(col + "|" + pos));
+      positionsForCol(b, col).forEach((pos) => state.cells.add(col + "|" + pos));
     }
     renderGrid();
   };
@@ -223,33 +232,34 @@ function renderGrid() {
   const wrap = el("div", "bar-grid");
 
   for (let col = 1; col <= b.cols; col++) {
-    const row = el("div", "bar-row");
-
-    const lbl = el("button", "bar-label", col + "列");
-    lbl.addEventListener("click", () => {
-      const keys = positions.map((pos) => col + "|" + pos);
-      const allSelected = keys.every((k) => state.cells.has(k));
-      keys.forEach((k) => (allSelected ? state.cells.delete(k) : state.cells.add(k)));
-      renderGrid();
-    });
-    row.appendChild(lbl);
-
-    positions.forEach((pos) => {
+    positionsForCol(b, col).forEach((pos) => {
       const key = col + "|" + pos;
-      const doneKey = [state.base, b.name, col, pos].join("|");
-      const doneWorks = state.todayWorks.get(doneKey);
-      let cls = "bar-cell";
-      if (doneWorks) cls += " done";
-      if (state.cells.has(key)) cls += " selected";
-      const label = doneWorks ? [...doneWorks].map(workAbbr).slice(0, 5).join("・") : "";
-      const cell = el("button", cls, label);
-      cell.addEventListener("click", () => {
+      const row = el("div", "bar-row");
+
+      const toggle = () => {
         state.cells.has(key) ? state.cells.delete(key) : state.cells.add(key);
         renderGrid();
-      });
+      };
+
+      const lbl = el("button", "bar-label", pos ? col + "列 " + pos : col + "列");
+      lbl.addEventListener("click", toggle);
+      row.appendChild(lbl);
+
+      const doneKey = [state.base, b.name, col, pos].join("|");
+      const info = state.todayWorks.get(doneKey);
+      let cls = "bar-cell";
+      if (info) {
+        cls += " done";
+        if (info.partial) cls += " partial";
+      }
+      if (state.cells.has(key)) cls += " selected";
+      const label = info ? info.labels.slice(0, 5).join("・") : "";
+      const cell = el("button", cls, label);
+      cell.addEventListener("click", toggle);
       row.appendChild(cell);
+
+      wrap.appendChild(row);
     });
-    wrap.appendChild(row);
 
     if (b.centerAfter === col && col < b.cols) {
       wrap.appendChild(el("div", "center-aisle", "柱・中央通路"));
@@ -330,11 +340,13 @@ function addCurrentItem() {
     cells,
     works,
     workDetail: !isFree(b) && state.works.has("その他") ? detail : "",
+    partial: state.partial,
   });
 
   state.cells.clear();
   state.works.clear();
   $("work-detail").value = "";
+  resetPartial();
   renderWorkArea();
   renderGrid();
   renderItems();
@@ -364,6 +376,7 @@ async function submitAll() {
     toast(`✅ 記録しました（${saved}件）`);
     state.items = [];
     $("note").value = "";
+    resetPartial();
     renderItems();
     await loadToday();
     renderGrid();
@@ -392,19 +405,20 @@ async function gasSave(payload) {
 
 async function loadToday() {
   state.todayWorks = new Map();
-  const add = (key, work) => {
-    if (!state.todayWorks.has(key)) state.todayWorks.set(key, new Set());
-    if (work) state.todayWorks.get(key).add(work);
-  };
-  // 旧方式の位置の値も現在の区分に読み替えて拾う
-  const addNormalized = (base, building, row, pos, work) => {
-    const b = findBuilding(base, building);
-    add([base, building, row, normPos(b, pos)].join("|"), work);
+  const add = (base, building, row, pos, work, st) => {
+    const key = [base, building, row, pos].join("|");
+    if (!state.todayWorks.has(key)) {
+      state.todayWorks.set(key, { labels: [], works: new Set(), partial: false });
+    }
+    const o = state.todayWorks.get(key);
+    if (work) {
+      o.works.add(work);
+      o.labels.push(workAbbr(work) + (st === "途中" ? "~" : ""));
+      if (st === "途中") o.partial = true;
+    }
   };
   if (state.mock) {
-    mockTodayRecords().forEach((r) =>
-      addNormalized(r.base, r.building, r.row, r.pos, r.work)
-    );
+    mockTodayRecords().forEach((r) => add(r.base, r.building, r.row, r.pos, r.work, r.state));
     return;
   }
   try {
@@ -413,10 +427,13 @@ async function loadToday() {
     if (data.done) {
       data.done.forEach((s) => {
         const p = s.split("|");
-        addNormalized(p[0], p[1], p[2], p[3], p[4]);
+        add(p[0], p[1], p[2], p[3], p[4], p[5]);
       });
     } else {
-      (data.keys || []).forEach((k) => add(k, null));
+      (data.keys || []).forEach((k) => {
+        const p = k.split("|");
+        add(p[0], p[1], p[2], p[3], null, "");
+      });
     }
   } catch (err) {
     console.warn("今日の記録の取得に失敗", err);
@@ -445,6 +462,7 @@ function mockSave(payload) {
           work: w,
           workDetail: w === "その他" ? en.workDetail : "",
           note: payload.note,
+          state: en.partial ? "途中" : "完了",
         });
         saved++;
       });
@@ -495,7 +513,8 @@ function renderMyRecords(recs) {
   // 送信時刻×棟×作業ごとに1行へまとめる
   const groups = new Map();
   recs.forEach((r) => {
-    const work = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
+    const baseWork = r.work === "その他" && r.workDetail ? `その他（${r.workDetail}）` : r.work;
+    const work = baseWork + (r.state === "途中" ? "（途中）" : "");
     const gkey = [r.time, r.base, r.building, work].join("\t");
     if (!groups.has(gkey)) groups.set(gkey, { cells: [], ids: [] });
     const g = groups.get(gkey);

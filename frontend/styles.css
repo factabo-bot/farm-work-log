@@ -143,13 +143,13 @@ h2 {
 }
 .compact .aisle-h {
   height: 4px;
-  margin: 1px 0 3px 56px;
+  margin: 1px 0 3px 72px;
 }
 .compact .center-aisle {
   height: 14px;
   font-size: 0.7rem;
   letter-spacing: 2px;
-  margin: 1px 0 3px 56px;
+  margin: 1px 0 3px 72px;
 }
 
 /* 依頼画面: 棟の作業状況サマリ */
@@ -355,7 +355,7 @@ h2 {
   flex: 0 0 52px;
 }
 .bar-label {
-  flex: 0 0 52px;
+  flex: 0 0 68px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -394,12 +394,30 @@ h2 {
   border-color: #1b5e20;
   color: #fff;
 }
+/* 途中まで＝斜線（地色の上に重ねる） */
+.bar-cell.partial {
+  background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.22) 0 5px, transparent 5px 10px);
+}
+
+/* 「途中まで」チェック */
+.partial-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.95rem;
+  color: #555;
+}
+.partial-toggle input {
+  width: 22px;
+  height: 22px;
+}
 /* 通路（列の間の横帯） */
 .aisle-h {
   height: 6px;
   background: #e8d9bd;
   border-radius: 3px;
-  margin: 2px 0 6px 56px;
+  margin: 2px 0 6px 72px;
 }
 /* 中央の柱＋通路（左右一括選択の境界） */
 .center-aisle {
@@ -413,7 +431,7 @@ h2 {
   font-weight: bold;
   letter-spacing: 4px;
   border-radius: 4px;
-  margin: 2px 0 6px 56px;
+  margin: 2px 0 6px 72px;
 }
 
 /* 作業状況ヒートマップ（最後にやってからの日数・薄い青→赤の8段階） */
